@@ -1141,6 +1141,10 @@ transformation.  jdcolor.c currently supports
 	YCCK => CMYK
 as well as the null transforms.
 
+The two-pass color quantizer, jquant2.c, is specialized to handle RGB data
+(it weights distances appropriately for RGB colors).  You'll need to modify
+the code if you want to use it for non-RGB output color spaces.
+
 
 Error handling
 --------------
@@ -2080,26 +2084,28 @@ performance.  You *will* take a noticeable performance hit if you use a
 large-data memory model, and you should avoid "huge" model if at all
 possible.
 
-[The following space estimates are out of date and need to be recalculated.]
-
-An 8K stack is much more than sufficient for the JPEG code.  When executed, it
-will typically malloc about 10K-20K worth of near heap space (and lots of far
+The JPEG library typically needs 2Kb-3Kb of stack space.  It will also
+malloc about 20K-30K of near heap space while executing (and lots of far
 heap, but that doesn't count in this calculation).  This figure will vary
-depending on image size and other factors, but figuring 30K should be more
-than sufficient.  Thus you have about 25K available for static data and other
-modules' near heap requirements before you need to go to a larger memory
-model.  The C library's static data will account for several K of this, but
-that still leaves a good deal for your needs.  (If you are tight on space,
-you could reduce the sizes of the I/O buffers allocated by jdatasrc.c and
-jdatadst.c, say from 4K to 1K.)
+depending on selected operating mode, and to a lesser extent on image size.
+Thus you have perhaps 25K available for static data and other modules' near
+heap space before you need to go to a larger memory model.  The C library's
+static data will account for several K of this, but that still leaves a good
+deal for your needs.  (If you are tight on space, you could reduce the sizes
+of the I/O buffers allocated by jdatasrc.c and jdatadst.c, say from 4K to
+1K.)
+
+About 2K of the near heap space is "permanent" memory that will not be
+released until you destroy the JPEG object.  This is only an issue if you
+save a JPEG object between compression or decompression operations.
 
 Far data space may also be a tight resource when you are dealing with large
 images.  The most memory-intensive case is decompression with two-pass color
-quantization, or single-pass quantization to an externally supplied color map.
-This requires a 128Kb color lookup table plus strip buffers amounting to about
-150 bytes per column for typical sampling ratios (eg, about 96000 bytes for a
-640-pixel-wide image).  You may not be able to process wide images if you have
-large data structures of your own.
+quantization, or single-pass quantization to an externally supplied color
+map.  This requires a 128Kb color lookup table plus strip buffers amounting
+to about 50 bytes per column for typical sampling ratios (eg, about 32000
+bytes for a 640-pixel-wide image).  You may not be able to process wide
+images if you have large data structures of your own.
 
 Of course, all of these concerns vanish if you use a 32-bit flat-memory-model
 compiler, such as DJGPP or Watcom C.  We highly recommend flat model if you

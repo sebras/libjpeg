@@ -28,8 +28,8 @@
 typedef struct {
   struct jpeg_c_main_controller pub; /* public fields */
 
-  JDIMENSION cur_mcu_row;	/* number of current MCU row */
-  JDIMENSION rowgroup_ctr;	/* counts row groups received in MCU row */
+  JDIMENSION cur_mcu_row;	/* number of current iMCU row */
+  JDIMENSION rowgroup_ctr;	/* counts row groups received in iMCU row */
   JDIMENSION mcu_ctr;		/* counts MCUs output from current row */
   boolean suspended;		/* remember if we suspended output */
   J_BUF_MODE pass_mode;		/* current operating mode */
@@ -118,7 +118,7 @@ process_data_simple_main (j_compress_ptr cinfo,
 {
   my_main_ptr main = (my_main_ptr) cinfo->main;
 
-  while (*in_row_ctr < in_rows_avail) {
+  while (main->cur_mcu_row < cinfo->total_iMCU_rows) {
     /* Read input data if we haven't filled the main buffer yet */
     if (main->rowgroup_ctr < DCTSIZE)
       (*cinfo->prep->pre_process_data) (cinfo,
@@ -126,33 +126,39 @@ process_data_simple_main (j_compress_ptr cinfo,
 					main->buffer, &main->rowgroup_ctr,
 					(JDIMENSION) DCTSIZE);
 
-    /* If we have a full iMCU row buffered, emit data. */
-    /* Note that preprocessor ensures this will be true at bottom of image. */
-    if (main->rowgroup_ctr == DCTSIZE) {
-      (*cinfo->coef->compress_data) (cinfo, main->buffer, &main->mcu_ctr);
-      /* If compressor did not consume the whole row, then we must need to
-       * suspend processing and return to the application.  In this situation
-       * we pretend we didn't yet consume the last input row; otherwise, if
-       * it happened to be the last row of the image, the application would
-       * think we were done.
-       */
-      if (main->mcu_ctr < cinfo->MCUs_per_row) {
-	if (! main->suspended) {
-	  (*in_row_ctr)--;
-	  main->suspended = TRUE;
-	}
-	return;
+    /* If we don't have a full iMCU row buffered, return to application for
+     * more data.  Note that preprocessor will always pad to fill the iMCU row
+     * at the bottom of the image.
+     */
+    if (main->rowgroup_ctr != DCTSIZE)
+      return;
+
+    /* Send the completed row to the compressor */
+    (*cinfo->coef->compress_data) (cinfo, main->buffer, &main->mcu_ctr);
+
+    /* If compressor did not consume the whole row, then we must need to
+     * suspend processing and return to the application.  In this situation
+     * we pretend we didn't yet consume the last input row; otherwise, if
+     * it happened to be the last row of the image, the application would
+     * think we were done.
+     */
+    if (main->mcu_ctr < cinfo->MCUs_per_row) {
+      if (! main->suspended) {
+	(*in_row_ctr)--;
+	main->suspended = TRUE;
       }
-      /* We did finish the row.  Undo our little suspension hack if a previous
-       * call suspended; then mark the main buffer empty.
-       */
-      if (main->suspended) {
-	(*in_row_ctr)++;
-	main->suspended = FALSE;
-      }
-      main->mcu_ctr = 0;
-      main->rowgroup_ctr = 0;
+      return;
     }
+    /* We did finish the row.  Undo our little suspension hack if a previous
+     * call suspended; then mark the main buffer empty.
+     */
+    if (main->suspended) {
+      (*in_row_ctr)++;
+      main->suspended = FALSE;
+    }
+    main->mcu_ctr = 0;
+    main->rowgroup_ctr = 0;
+    main->cur_mcu_row++;
   }
 }
 
@@ -174,7 +180,7 @@ process_data_buffer_main (j_compress_ptr cinfo,
   jpeg_component_info *compptr;
   boolean writing = (main->pass_mode != JBUF_CRANK_DEST);
 
-  while (*in_row_ctr < in_rows_avail) {
+  while (main->cur_mcu_row < cinfo->total_iMCU_rows) {
     /* Realign the virtual buffers if at the start of an iMCU row. */
     if (main->rowgroup_ctr == 0) {
       for (ci = 0, compptr = cinfo->comp_info; ci < cinfo->num_components;
@@ -197,7 +203,7 @@ process_data_buffer_main (j_compress_ptr cinfo,
 					input_buf, in_row_ctr, in_rows_avail,
 					main->buffer, &main->rowgroup_ctr,
 					(JDIMENSION) DCTSIZE);
-      /* Quit if we didn't yet fill the iMCU row. */
+      /* Return to application if we need more data to fill the iMCU row. */
       if (main->rowgroup_ctr < DCTSIZE)
 	return;
     }

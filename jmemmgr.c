@@ -230,22 +230,20 @@ out_of_memory (j_common_ptr cinfo, int which)
  * The speed vs. space tradeoff is largely determined by the slop values.
  * A different slop value is provided for each pool class (lifetime),
  * and we also distinguish the first pool of a class from later ones.
- * We scale all the constants by SIZEOF(int) as a crude way of adapting
- * the slop constants to a particular machine.
- * TO DO: tune slop constants to match observed behavior of JPEG library.
- * May need to distinguish compression and decompression cases???
+ * NOTE: the values given work fairly well on both 16- and 32-bit-int
+ * machines, but may be too small if longs are 64 bits or more.
  */
 
 static const size_t first_pool_slop[JPOOL_NUMPOOLS] = 
 {
-	400 * SIZEOF(int),	/* first PERMANENT pool */
-	4000 * SIZEOF(int)	/* first IMAGE pool */
+	1600,			/* first PERMANENT pool */
+	16000			/* first IMAGE pool */
 };
 
 static const size_t extra_pool_slop[JPOOL_NUMPOOLS] = 
 {
-	100 * SIZEOF(int),	/* additional PERMANENT pools */
-	400 * SIZEOF(int)	/* additional IMAGE pools */
+	0,			/* additional PERMANENT pools */
+	5000			/* additional IMAGE pools */
 };
 
 #define MIN_SLOP  50		/* greater than 0 to avoid futile looping */

@@ -95,8 +95,8 @@ expand_right_edge (JSAMPARRAY image_data, int num_rows,
 
   if (numcols > 0) {
     for (row = 0; row < num_rows; row++) {
-      ptr = image_data[row] + (input_cols-1);
-      pixval = GETJSAMPLE(*ptr++);
+      ptr = image_data[row] + input_cols;
+      pixval = ptr[-1];		/* don't need GETJSAMPLE() here */
       for (count = numcols; count > 0; count--)
 	*ptr++ = pixval;
     }

@@ -250,7 +250,7 @@ int is_char_signed (arg)
     return 0;			/* type char is unsigned */
   }
   else if (arg != -67) {	/* expected result for signed char */
-    printf("Hmm, it seems 'char' is less than eight bits wide on your machine.\n");
+    printf("Hmm, it seems 'char' is not eight bits wide on your machine.\n");
     printf("I fear the JPEG software will not work at all.\n\n");
   }
   return 1;			/* assume char is signed otherwise */
@@ -267,14 +267,18 @@ int is_shifting_signed (arg)
 {
   long res = arg >> 4;
 
-  if (res == 0x80817F4L) {	/* expected result for unsigned */
+  if (res == -0x7F7E80CL) {	/* expected result for signed shift */
+    return 1;			/* right shift is signed */
+  }
+  /* see if unsigned-shift hack will fix it. */
+  /* we can't just test exact value since it depends on width of long... */
+  res |= (~0L) << (32-4);
+  if (res == -0x7F7E80CL) {	/* expected result now? */
     return 0;			/* right shift is unsigned */
   }
-  else if (res != -0x7F7E80CL) { /* expected result for signed */
-    printf("Right shift isn't acting as I expect it to.\n");
-    printf("I fear the JPEG software will not work at all.\n\n");
-  }
-  return 1;			/* right shift is signed */
+  printf("Right shift isn't acting as I expect it to.\n");
+  printf("I fear the JPEG software will not work at all.\n\n");
+  return 0;			/* try it with unsigned anyway */
 }
 
 

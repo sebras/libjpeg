@@ -11,6 +11,7 @@
  * Floyd-Steinberg dithering.
  * It is also possible to use just the second pass to map to an arbitrary
  * externally-given color map.
+ *
  * Note: ordered dithering is not supported, since there isn't any fast
  * way to compute intercolor distances; it's unclear that ordered dither's
  * fundamental assumptions even hold with an irregularly spaced color map.
@@ -59,9 +60,42 @@
  * and it also interfered with desired capabilities such as quantizing to an
  * externally-supplied colormap.  We have therefore abandoned that approach.
  * The present code works in the post-conversion color space, typically RGB.
+ *
+ * To improve the visual quality of the results, we actually work in scaled
+ * RGB space, giving G distances more weight than R, and R in turn more than
+ * B.  To do everything in integer math, we must use integer scale factors.
+ * The 2/3/1 scale factors used here correspond loosely to the relative
+ * weights of the colors in the NTSC grayscale equation.
+ * If you want to use this code to quantize a non-RGB color space, you'll
+ * probably need to change these scale factors.
  */
 
-#define MAXNUMCOLORS  (MAXJSAMPLE+1) /* maximum size of colormap */
+#define R_SCALE 2		/* scale R distances by this much */
+#define G_SCALE 3		/* scale G distances by this much */
+#define B_SCALE 1		/* and B by this much */
+
+/* Relabel R/G/B as components 0/1/2, respecting the RGB ordering defined
+ * in jmorecfg.h.  As the code stands, it will do the right thing for R,G,B
+ * and B,G,R orders.  If you define some other weird order in jmorecfg.h,
+ * you'll get compile errors until you extend this logic.  In that case
+ * you'll probably want to tweak the histogram sizes too.
+ */
+
+#if RGB_RED == 0
+#define C0_SCALE R_SCALE
+#endif
+#if RGB_BLUE == 0
+#define C0_SCALE B_SCALE
+#endif
+#if RGB_GREEN == 1
+#define C1_SCALE G_SCALE
+#endif
+#if RGB_RED == 2
+#define C2_SCALE R_SCALE
+#endif
+#if RGB_BLUE == 2
+#define C2_SCALE B_SCALE
+#endif
 
 
 /*
@@ -84,32 +118,37 @@
  * Since the JPEG code is intended to run in small memory model on 80x86
  * machines, we can't just allocate the histogram in one chunk.  Instead
  * of a true 3-D array, we use a row of pointers to 2-D arrays.  Each
- * pointer corresponds to an R value (typically 2^5 = 32 pointers) and
+ * pointer corresponds to a C0 value (typically 2^5 = 32 pointers) and
  * each 2-D array has 2^6*2^5 = 2048 or 2^6*2^6 = 4096 entries.  Note that
  * on 80x86 machines, the pointer row is in near memory but the actual
  * arrays are in far memory (same arrangement as we use for image arrays).
  */
 
-#define HIST_R_BITS  5		/* bits of precision in R histogram */
-#define HIST_G_BITS  6		/* bits of precision in G histogram */
-#define HIST_B_BITS  5		/* bits of precision in B histogram */
+#define MAXNUMCOLORS  (MAXJSAMPLE+1) /* maximum size of colormap */
+
+/* These will do the right thing for either R,G,B or B,G,R color order,
+ * but you may not like the results for other color orders.
+ */
+#define HIST_C0_BITS  5		/* bits of precision in R/B histogram */
+#define HIST_C1_BITS  6		/* bits of precision in G histogram */
+#define HIST_C2_BITS  5		/* bits of precision in B/R histogram */
 
 /* Number of elements along histogram axes. */
-#define HIST_R_ELEMS  (1<<HIST_R_BITS)
-#define HIST_G_ELEMS  (1<<HIST_G_BITS)
-#define HIST_B_ELEMS  (1<<HIST_B_BITS)
+#define HIST_C0_ELEMS  (1<<HIST_C0_BITS)
+#define HIST_C1_ELEMS  (1<<HIST_C1_BITS)
+#define HIST_C2_ELEMS  (1<<HIST_C2_BITS)
 
 /* These are the amounts to shift an input value to get a histogram index. */
-#define R_SHIFT  (BITS_IN_JSAMPLE-HIST_R_BITS)
-#define G_SHIFT  (BITS_IN_JSAMPLE-HIST_G_BITS)
-#define B_SHIFT  (BITS_IN_JSAMPLE-HIST_B_BITS)
+#define C0_SHIFT  (BITS_IN_JSAMPLE-HIST_C0_BITS)
+#define C1_SHIFT  (BITS_IN_JSAMPLE-HIST_C1_BITS)
+#define C2_SHIFT  (BITS_IN_JSAMPLE-HIST_C2_BITS)
 
 
-typedef UINT16 histcell;	/* histogram cell; MUST be an unsigned type */
+typedef UINT16 histcell;	/* histogram cell; prefer an unsigned type */
 
 typedef histcell FAR * histptr;	/* for pointers to histogram cells */
 
-typedef histcell hist1d[HIST_B_ELEMS]; /* typedefs for the array */
+typedef histcell hist1d[HIST_C2_ELEMS]; /* typedefs for the array */
 typedef hist1d FAR * hist2d;	/* type for the 2nd-level pointers */
 typedef hist2d * hist3d;	/* type for top-level pointer */
 
@@ -191,9 +230,9 @@ prescan_quantize (j_decompress_ptr cinfo, JSAMPARRAY input_buf,
     ptr = input_buf[row];
     for (col = width; col > 0; col--) {
       /* get pixel value and index into the histogram */
-      histp = & histogram[GETJSAMPLE(ptr[0]) >> R_SHIFT]
-			 [GETJSAMPLE(ptr[1]) >> G_SHIFT]
-			 [GETJSAMPLE(ptr[2]) >> B_SHIFT];
+      histp = & histogram[GETJSAMPLE(ptr[0]) >> C0_SHIFT]
+			 [GETJSAMPLE(ptr[1]) >> C1_SHIFT]
+			 [GETJSAMPLE(ptr[2]) >> C2_SHIFT];
       /* increment, check for overflow and undo increment if so. */
       if (++(*histp) <= 0)
 	(*histp)--;
@@ -216,7 +255,7 @@ typedef struct {
   int c1min, c1max;
   int c2min, c2max;
   /* The volume (actually 2-norm) of the box */
-  unsigned int volume;
+  INT32 volume;
   /* The number of nonzero histogram cells within this box */
   long colorcount;
 } box;
@@ -231,13 +270,13 @@ find_biggest_color_pop (boxptr boxlist, int numboxes)
 {
   register boxptr boxp;
   register int i;
-  register long max = 0;
+  register long maxc = 0;
   boxptr which = NULL;
   
   for (i = 0, boxp = boxlist; i < numboxes; i++, boxp++) {
-    if (boxp->colorcount > max && boxp->volume > 0) {
+    if (boxp->colorcount > maxc && boxp->volume > 0) {
       which = boxp;
-      max = boxp->colorcount;
+      maxc = boxp->colorcount;
     }
   }
   return which;
@@ -251,13 +290,13 @@ find_biggest_volume (boxptr boxlist, int numboxes)
 {
   register boxptr boxp;
   register int i;
-  register unsigned int max = 0;
+  register INT32 maxv = 0;
   boxptr which = NULL;
   
   for (i = 0, boxp = boxlist; i < numboxes; i++, boxp++) {
-    if (boxp->volume > max) {
+    if (boxp->volume > maxv) {
       which = boxp;
-      max = boxp->volume;
+      maxv = boxp->volume;
     }
   }
   return which;
@@ -274,6 +313,7 @@ update_box (j_decompress_ptr cinfo, boxptr boxp)
   histptr histp;
   int c0,c1,c2;
   int c0min,c0max,c1min,c1max,c2min,c2max;
+  INT32 dist0,dist1,dist2;
   long ccount;
   
   c0min = boxp->c0min;  c0max = boxp->c0max;
@@ -328,7 +368,7 @@ update_box (j_decompress_ptr cinfo, boxptr boxp)
     for (c2 = c2min; c2 <= c2max; c2++)
       for (c0 = c0min; c0 <= c0max; c0++) {
 	histp = & histogram[c0][c1min][c2];
-	for (c1 = c1min; c1 <= c1max; c1++, histp += HIST_B_ELEMS)
+	for (c1 = c1min; c1 <= c1max; c1++, histp += HIST_C2_ELEMS)
 	  if (*histp != 0) {
 	    boxp->c2min = c2min = c2;
 	    goto have_c2min;
@@ -339,7 +379,7 @@ update_box (j_decompress_ptr cinfo, boxptr boxp)
     for (c2 = c2max; c2 >= c2min; c2--)
       for (c0 = c0min; c0 <= c0max; c0++) {
 	histp = & histogram[c0][c1min][c2];
-	for (c1 = c1min; c1 <= c1max; c1++, histp += HIST_B_ELEMS)
+	for (c1 = c1min; c1 <= c1max; c1++, histp += HIST_C2_ELEMS)
 	  if (*histp != 0) {
 	    boxp->c2max = c2max = c2;
 	    goto have_c2max;
@@ -348,18 +388,17 @@ update_box (j_decompress_ptr cinfo, boxptr boxp)
  have_c2max:
 
   /* Update box volume.
-   * We use 2-norm rather than real volume here; this has the advantage
-   * that a box is splittable iff norm > 0.
-   * Some care is needed since the differences are expressed in
-   * histogram-cell units; if the HIST_x_BITS values aren't all the same,
-   * we have to scale to get consistent RGB-space distances.
-   * This code won't work right if HIST_G_BITS is less than the other two,
-   * but that shouldn't ever be true.
+   * We use 2-norm rather than real volume here; this biases the method
+   * against making long narrow boxes, and it has the side benefit that
+   * a box is splittable iff norm > 0.
+   * Since the differences are expressed in histogram-cell units,
+   * we have to shift back to JSAMPLE units to get consistent distances;
+   * after which, we scale according to the selected distance scale factors.
    */
-  c0 = (c0max - c0min) << (HIST_G_BITS-HIST_R_BITS);
-  c1 = (c1max - c1min);
-  c2 = (c2max - c2min) << (HIST_G_BITS-HIST_B_BITS);
-  boxp->volume = c0*c0 + c1*c1 + c2*c2;
+  dist0 = ((c0max - c0min) << C0_SHIFT) * C0_SCALE;
+  dist1 = ((c1max - c1min) << C1_SHIFT) * C1_SCALE;
+  dist2 = ((c2max - c2min) << C2_SHIFT) * C2_SCALE;
+  boxp->volume = dist0*dist0 + dist1*dist1 + dist2*dist2;
   
   /* Now scan remaining volume of box and compute population */
   ccount = 0;
@@ -401,14 +440,23 @@ median_cut (j_decompress_ptr cinfo, boxptr boxlist, int numboxes,
     b2->c0min = b1->c0min; b2->c1min = b1->c1min; b2->c2min = b1->c2min;
     /* Choose which axis to split the box on.
      * Current algorithm: longest scaled axis.
-     * See notes in update_box about scaling distances...
+     * See notes in update_box about scaling distances.
      */
-    c0 = (b1->c0max - b1->c0min) << (HIST_G_BITS-HIST_R_BITS);
-    c1 = (b1->c1max - b1->c1min);
-    c2 = (b1->c2max - b1->c2min) << (HIST_G_BITS-HIST_B_BITS);
-    cmax = c0; n = 0;
-    if (c1 > cmax) { cmax = c1; n = 1; }
+    c0 = ((b1->c0max - b1->c0min) << C0_SHIFT) * C0_SCALE;
+    c1 = ((b1->c1max - b1->c1min) << C1_SHIFT) * C1_SCALE;
+    c2 = ((b1->c2max - b1->c2min) << C2_SHIFT) * C2_SCALE;
+    /* We want to break any ties in favor of green, then red, blue last.
+     * This code does the right thing for R,G,B or B,G,R color orders only.
+     */
+#if RGB_RED == 0
+    cmax = c1; n = 1;
+    if (c0 > cmax) { cmax = c0; n = 0; }
     if (c2 > cmax) { n = 2; }
+#else
+    cmax = c1; n = 1;
+    if (c2 > cmax) { cmax = c2; n = 2; }
+    if (c0 > cmax) { n = 0; }
+#endif
     /* Choose split point along selected axis, and update box bounds.
      * Current algorithm: split at halfway point.
      * (Since the box has been shrunk to minimum volume,
@@ -468,9 +516,9 @@ compute_color (j_decompress_ptr cinfo, boxptr boxp, int icolor)
       for (c2 = c2min; c2 <= c2max; c2++) {
 	if ((count = *histp++) != 0) {
 	  total += count;
-	  c0total += ((c0 << R_SHIFT) + ((1<<R_SHIFT)>>1)) * count;
-	  c1total += ((c1 << G_SHIFT) + ((1<<G_SHIFT)>>1)) * count;
-	  c2total += ((c2 << B_SHIFT) + ((1<<B_SHIFT)>>1)) * count;
+	  c0total += ((c0 << C0_SHIFT) + ((1<<C0_SHIFT)>>1)) * count;
+	  c1total += ((c1 << C1_SHIFT) + ((1<<C1_SHIFT)>>1)) * count;
+	  c2total += ((c2 << C2_SHIFT) + ((1<<C2_SHIFT)>>1)) * count;
 	}
       }
     }
@@ -496,11 +544,11 @@ select_colors (j_decompress_ptr cinfo)
   /* Initialize one box containing whole space */
   numboxes = 1;
   boxlist[0].c0min = 0;
-  boxlist[0].c0max = MAXJSAMPLE >> R_SHIFT;
+  boxlist[0].c0max = MAXJSAMPLE >> C0_SHIFT;
   boxlist[0].c1min = 0;
-  boxlist[0].c1max = MAXJSAMPLE >> G_SHIFT;
+  boxlist[0].c1max = MAXJSAMPLE >> C1_SHIFT;
   boxlist[0].c2min = 0;
-  boxlist[0].c2max = MAXJSAMPLE >> B_SHIFT;
+  boxlist[0].c2max = MAXJSAMPLE >> C2_SHIFT;
   /* Shrink it to actually-used volume and set its statistics */
   update_box(cinfo, & boxlist[0]);
   /* Perform median-cut to produce final box list */
@@ -568,17 +616,17 @@ select_colors (j_decompress_ptr cinfo)
 
 
 /* log2(histogram cells in update box) for each axis; this can be adjusted */
-#define BOX_R_LOG  (HIST_R_BITS-3)
-#define BOX_G_LOG  (HIST_G_BITS-3)
-#define BOX_B_LOG  (HIST_B_BITS-3)
+#define BOX_C0_LOG  (HIST_C0_BITS-3)
+#define BOX_C1_LOG  (HIST_C1_BITS-3)
+#define BOX_C2_LOG  (HIST_C2_BITS-3)
 
-#define BOX_R_ELEMS  (1<<BOX_R_LOG) /* # of hist cells in update box */
-#define BOX_G_ELEMS  (1<<BOX_G_LOG)
-#define BOX_B_ELEMS  (1<<BOX_B_LOG)
+#define BOX_C0_ELEMS  (1<<BOX_C0_LOG) /* # of hist cells in update box */
+#define BOX_C1_ELEMS  (1<<BOX_C1_LOG)
+#define BOX_C2_ELEMS  (1<<BOX_C2_LOG)
 
-#define BOX_R_SHIFT  (R_SHIFT + BOX_R_LOG)
-#define BOX_G_SHIFT  (G_SHIFT + BOX_G_LOG)
-#define BOX_B_SHIFT  (B_SHIFT + BOX_B_LOG)
+#define BOX_C0_SHIFT  (C0_SHIFT + BOX_C0_LOG)
+#define BOX_C1_SHIFT  (C1_SHIFT + BOX_C1_LOG)
+#define BOX_C2_SHIFT  (C2_SHIFT + BOX_C2_LOG)
 
 
 /*
@@ -614,11 +662,11 @@ find_nearby_colors (j_decompress_ptr cinfo, int minc0, int minc1, int minc2,
    * Note that since ">>" rounds down, the "center" values may be closer to
    * min than to max; hence comparisons to them must be "<=", not "<".
    */
-  maxc0 = minc0 + ((1 << BOX_R_SHIFT) - (1 << R_SHIFT));
+  maxc0 = minc0 + ((1 << BOX_C0_SHIFT) - (1 << C0_SHIFT));
   centerc0 = (minc0 + maxc0) >> 1;
-  maxc1 = minc1 + ((1 << BOX_G_SHIFT) - (1 << G_SHIFT));
+  maxc1 = minc1 + ((1 << BOX_C1_SHIFT) - (1 << C1_SHIFT));
   centerc1 = (minc1 + maxc1) >> 1;
-  maxc2 = minc2 + ((1 << BOX_B_SHIFT) - (1 << B_SHIFT));
+  maxc2 = minc2 + ((1 << BOX_C2_SHIFT) - (1 << C2_SHIFT));
   centerc2 = (minc2 + maxc2) >> 1;
 
   /* For each color in colormap, find:
@@ -635,67 +683,67 @@ find_nearby_colors (j_decompress_ptr cinfo, int minc0, int minc1, int minc2,
     /* We compute the squared-c0-distance term, then add in the other two. */
     x = GETJSAMPLE(cinfo->colormap[0][i]);
     if (x < minc0) {
-      tdist = x - minc0;
+      tdist = (x - minc0) * C0_SCALE;
       min_dist = tdist*tdist;
-      tdist = x - maxc0;
+      tdist = (x - maxc0) * C0_SCALE;
       max_dist = tdist*tdist;
     } else if (x > maxc0) {
-      tdist = x - maxc0;
+      tdist = (x - maxc0) * C0_SCALE;
       min_dist = tdist*tdist;
-      tdist = x - minc0;
+      tdist = (x - minc0) * C0_SCALE;
       max_dist = tdist*tdist;
     } else {
       /* within cell range so no contribution to min_dist */
       min_dist = 0;
       if (x <= centerc0) {
-	tdist = x - maxc0;
+	tdist = (x - maxc0) * C0_SCALE;
 	max_dist = tdist*tdist;
       } else {
-	tdist = x - minc0;
+	tdist = (x - minc0) * C0_SCALE;
 	max_dist = tdist*tdist;
       }
     }
 
     x = GETJSAMPLE(cinfo->colormap[1][i]);
     if (x < minc1) {
-      tdist = x - minc1;
+      tdist = (x - minc1) * C1_SCALE;
       min_dist += tdist*tdist;
-      tdist = x - maxc1;
+      tdist = (x - maxc1) * C1_SCALE;
       max_dist += tdist*tdist;
     } else if (x > maxc1) {
-      tdist = x - maxc1;
+      tdist = (x - maxc1) * C1_SCALE;
       min_dist += tdist*tdist;
-      tdist = x - minc1;
+      tdist = (x - minc1) * C1_SCALE;
       max_dist += tdist*tdist;
     } else {
       /* within cell range so no contribution to min_dist */
       if (x <= centerc1) {
-	tdist = x - maxc1;
+	tdist = (x - maxc1) * C1_SCALE;
 	max_dist += tdist*tdist;
       } else {
-	tdist = x - minc1;
+	tdist = (x - minc1) * C1_SCALE;
 	max_dist += tdist*tdist;
       }
     }
 
     x = GETJSAMPLE(cinfo->colormap[2][i]);
     if (x < minc2) {
-      tdist = x - minc2;
+      tdist = (x - minc2) * C2_SCALE;
       min_dist += tdist*tdist;
-      tdist = x - maxc2;
+      tdist = (x - maxc2) * C2_SCALE;
       max_dist += tdist*tdist;
     } else if (x > maxc2) {
-      tdist = x - maxc2;
+      tdist = (x - maxc2) * C2_SCALE;
       min_dist += tdist*tdist;
-      tdist = x - minc2;
+      tdist = (x - minc2) * C2_SCALE;
       max_dist += tdist*tdist;
     } else {
       /* within cell range so no contribution to min_dist */
       if (x <= centerc2) {
-	tdist = x - maxc2;
+	tdist = (x - maxc2) * C2_SCALE;
 	max_dist += tdist*tdist;
       } else {
-	tdist = x - minc2;
+	tdist = (x - minc2) * C2_SCALE;
 	max_dist += tdist*tdist;
       }
     }
@@ -738,11 +786,11 @@ find_best_colors (j_decompress_ptr cinfo, int minc0, int minc1, int minc2,
   register INT32 xx2;
   INT32 inc0, inc1, inc2;	/* initial values for increments */
   /* This array holds the distance to the nearest-so-far color for each cell */
-  INT32 bestdist[BOX_R_ELEMS * BOX_G_ELEMS * BOX_B_ELEMS];
+  INT32 bestdist[BOX_C0_ELEMS * BOX_C1_ELEMS * BOX_C2_ELEMS];
 
   /* Initialize best-distance for each cell of the update box */
   bptr = bestdist;
-  for (i = BOX_R_ELEMS*BOX_G_ELEMS*BOX_B_ELEMS-1; i >= 0; i--)
+  for (i = BOX_C0_ELEMS*BOX_C1_ELEMS*BOX_C2_ELEMS-1; i >= 0; i--)
     *bptr++ = 0x7FFFFFFFL;
   
   /* For each color selected by find_nearby_colors,
@@ -751,48 +799,48 @@ find_best_colors (j_decompress_ptr cinfo, int minc0, int minc1, int minc2,
    */
   
   /* Nominal steps between cell centers ("x" in Thomas article) */
-#define STEP_R  (1 << R_SHIFT)
-#define STEP_G  (1 << G_SHIFT)
-#define STEP_B  (1 << B_SHIFT)
+#define STEP_C0  ((1 << C0_SHIFT) * C0_SCALE)
+#define STEP_C1  ((1 << C1_SHIFT) * C1_SCALE)
+#define STEP_C2  ((1 << C2_SHIFT) * C2_SCALE)
   
   for (i = 0; i < numcolors; i++) {
     icolor = GETJSAMPLE(colorlist[i]);
     /* Compute (square of) distance from minc0/c1/c2 to this color */
-    inc0 = minc0 - (int) GETJSAMPLE(cinfo->colormap[0][icolor]);
+    inc0 = (minc0 - GETJSAMPLE(cinfo->colormap[0][icolor])) * C0_SCALE;
     dist0 = inc0*inc0;
-    inc1 = minc1 - (int) GETJSAMPLE(cinfo->colormap[1][icolor]);
+    inc1 = (minc1 - GETJSAMPLE(cinfo->colormap[1][icolor])) * C1_SCALE;
     dist0 += inc1*inc1;
-    inc2 = minc2 - (int) GETJSAMPLE(cinfo->colormap[2][icolor]);
+    inc2 = (minc2 - GETJSAMPLE(cinfo->colormap[2][icolor])) * C2_SCALE;
     dist0 += inc2*inc2;
     /* Form the initial difference increments */
-    inc0 = inc0 * (2 * STEP_R) + STEP_R * STEP_R;
-    inc1 = inc1 * (2 * STEP_G) + STEP_G * STEP_G;
-    inc2 = inc2 * (2 * STEP_B) + STEP_B * STEP_B;
+    inc0 = inc0 * (2 * STEP_C0) + STEP_C0 * STEP_C0;
+    inc1 = inc1 * (2 * STEP_C1) + STEP_C1 * STEP_C1;
+    inc2 = inc2 * (2 * STEP_C2) + STEP_C2 * STEP_C2;
     /* Now loop over all cells in box, updating distance per Thomas method */
     bptr = bestdist;
     cptr = bestcolor;
     xx0 = inc0;
-    for (ic0 = BOX_R_ELEMS-1; ic0 >= 0; ic0--) {
+    for (ic0 = BOX_C0_ELEMS-1; ic0 >= 0; ic0--) {
       dist1 = dist0;
       xx1 = inc1;
-      for (ic1 = BOX_G_ELEMS-1; ic1 >= 0; ic1--) {
+      for (ic1 = BOX_C1_ELEMS-1; ic1 >= 0; ic1--) {
 	dist2 = dist1;
 	xx2 = inc2;
-	for (ic2 = BOX_B_ELEMS-1; ic2 >= 0; ic2--) {
+	for (ic2 = BOX_C2_ELEMS-1; ic2 >= 0; ic2--) {
 	  if (dist2 < *bptr) {
 	    *bptr = dist2;
 	    *cptr = (JSAMPLE) icolor;
 	  }
 	  dist2 += xx2;
-	  xx2 += 2 * STEP_B * STEP_B;
+	  xx2 += 2 * STEP_C2 * STEP_C2;
 	  bptr++;
 	  cptr++;
 	}
 	dist1 += xx1;
-	xx1 += 2 * STEP_G * STEP_G;
+	xx1 += 2 * STEP_C1 * STEP_C1;
       }
       dist0 += xx0;
-      xx0 += 2 * STEP_R * STEP_R;
+      xx0 += 2 * STEP_C0 * STEP_C0;
     }
   }
 }
@@ -814,20 +862,20 @@ fill_inverse_cmap (j_decompress_ptr cinfo, int c0, int c1, int c2)
   JSAMPLE colorlist[MAXNUMCOLORS];
   int numcolors;		/* number of candidate colors */
   /* This array holds the actually closest colormap index for each cell. */
-  JSAMPLE bestcolor[BOX_R_ELEMS * BOX_G_ELEMS * BOX_B_ELEMS];
+  JSAMPLE bestcolor[BOX_C0_ELEMS * BOX_C1_ELEMS * BOX_C2_ELEMS];
 
   /* Convert cell coordinates to update box ID */
-  c0 >>= BOX_R_LOG;
-  c1 >>= BOX_G_LOG;
-  c2 >>= BOX_B_LOG;
+  c0 >>= BOX_C0_LOG;
+  c1 >>= BOX_C1_LOG;
+  c2 >>= BOX_C2_LOG;
 
   /* Compute true coordinates of update box's origin corner.
    * Actually we compute the coordinates of the center of the corner
    * histogram cell, which are the lower bounds of the volume we care about.
    */
-  minc0 = (c0 << BOX_R_SHIFT) + ((1 << R_SHIFT) >> 1);
-  minc1 = (c1 << BOX_G_SHIFT) + ((1 << G_SHIFT) >> 1);
-  minc2 = (c2 << BOX_B_SHIFT) + ((1 << B_SHIFT) >> 1);
+  minc0 = (c0 << BOX_C0_SHIFT) + ((1 << C0_SHIFT) >> 1);
+  minc1 = (c1 << BOX_C1_SHIFT) + ((1 << C1_SHIFT) >> 1);
+  minc2 = (c2 << BOX_C2_SHIFT) + ((1 << C2_SHIFT) >> 1);
   
   /* Determine which colormap entries are close enough to be candidates
    * for the nearest entry to some cell in the update box.
@@ -839,14 +887,14 @@ fill_inverse_cmap (j_decompress_ptr cinfo, int c0, int c1, int c2)
 		   bestcolor);
 
   /* Save the best color numbers (plus 1) in the main cache array */
-  c0 <<= BOX_R_LOG;		/* convert ID back to base cell indexes */
-  c1 <<= BOX_G_LOG;
-  c2 <<= BOX_B_LOG;
+  c0 <<= BOX_C0_LOG;		/* convert ID back to base cell indexes */
+  c1 <<= BOX_C1_LOG;
+  c2 <<= BOX_C2_LOG;
   cptr = bestcolor;
-  for (ic0 = 0; ic0 < BOX_R_ELEMS; ic0++) {
-    for (ic1 = 0; ic1 < BOX_G_ELEMS; ic1++) {
+  for (ic0 = 0; ic0 < BOX_C0_ELEMS; ic0++) {
+    for (ic1 = 0; ic1 < BOX_C1_ELEMS; ic1++) {
       cachep = & histogram[c0+ic0][c1+ic1][c2];
-      for (ic2 = 0; ic2 < BOX_B_ELEMS; ic2++) {
+      for (ic2 = 0; ic2 < BOX_C2_ELEMS; ic2++) {
 	*cachep++ = (histcell) (GETJSAMPLE(*cptr++) + 1);
       }
     }
@@ -877,9 +925,9 @@ pass2_no_dither (j_decompress_ptr cinfo,
     outptr = output_buf[row];
     for (col = width; col > 0; col--) {
       /* get pixel value and index into the cache */
-      c0 = GETJSAMPLE(*inptr++) >> R_SHIFT;
-      c1 = GETJSAMPLE(*inptr++) >> G_SHIFT;
-      c2 = GETJSAMPLE(*inptr++) >> B_SHIFT;
+      c0 = GETJSAMPLE(*inptr++) >> C0_SHIFT;
+      c1 = GETJSAMPLE(*inptr++) >> C1_SHIFT;
+      c2 = GETJSAMPLE(*inptr++) >> C2_SHIFT;
       cachep = & histogram[c0][c1][c2];
       /* If we have not seen this color before, find nearest colormap entry */
       /* and update the cache */
@@ -971,11 +1019,11 @@ pass2_fs_dither (j_decompress_ptr cinfo,
       cur1 = GETJSAMPLE(range_limit[cur1]);
       cur2 = GETJSAMPLE(range_limit[cur2]);
       /* Index into the cache with adjusted pixel value */
-      cachep = & histogram[cur0 >> R_SHIFT][cur1 >> G_SHIFT][cur2 >> B_SHIFT];
+      cachep = & histogram[cur0>>C0_SHIFT][cur1>>C1_SHIFT][cur2>>C2_SHIFT];
       /* If we have not seen this color before, find nearest colormap */
       /* entry and update the cache */
       if (*cachep == 0)
-	fill_inverse_cmap(cinfo, cur0>>R_SHIFT, cur1>>G_SHIFT, cur2>>B_SHIFT);
+	fill_inverse_cmap(cinfo, cur0>>C0_SHIFT,cur1>>C1_SHIFT,cur2>>C2_SHIFT);
       /* Now emit the colormap index for this cell */
       { register int pixcode = *cachep - 1;
 	*outptr = (JSAMPLE) pixcode;
@@ -1064,30 +1112,6 @@ init_error_limit (j_decompress_ptr cinfo)
   table += MAXJSAMPLE;		/* so can index -MAXJSAMPLE .. +MAXJSAMPLE */
   cquantize->error_limiter = table;
 
-#ifdef GILES
-#define STEPSIZE ((MAXJSAMPLE+1)/32)
-  /* Map errors 1:1 up to +- MAXJSAMPLE/32 */
-  out = 0;
-  for (in = 0; in < STEPSIZE; in++, out++) {
-    table[in] = out; table[-in] = -out;
-  }
-  /* Map errors 1:2 up to +- 3*MAXJSAMPLE/32 */
-  for (; in < STEPSIZE*3; in++, out += (in&1) ? 0 : 1) {
-    table[in] = out; table[-in] = -out;
-  }
-  /* Map errors 1:4 up to +- 7*MAXJSAMPLE/32 */
-  for (; in < STEPSIZE*7; in++, out += (in&3) ? 0 : 1) {
-    table[in] = out; table[-in] = -out;
-  }
-  /* Map errors 1:8 up to +- 15*MAXJSAMPLE/32 */
-  for (; in < STEPSIZE*15; in++, out += (in&7) ? 0 : 1) {
-    table[in] = out; table[-in] = -out;
-  }
-  /* Clamp the rest to final out value (which is (MAXJSAMPLE+1)/8) */
-  for (; in <= MAXJSAMPLE; in++) {
-    table[in] = out; table[-in] = -out;
-  }
-#else
 #define STEPSIZE ((MAXJSAMPLE+1)/16)
   /* Map errors 1:1 up to +- MAXJSAMPLE/16 */
   out = 0;
@@ -1102,7 +1126,6 @@ init_error_limit (j_decompress_ptr cinfo)
   for (; in <= MAXJSAMPLE; in++) {
     table[in] = out; table[-in] = -out;
   }
-#endif
 #undef STEPSIZE
 }
 
@@ -1150,9 +1173,9 @@ start_pass_2_quant (j_decompress_ptr cinfo, boolean is_pre_scan)
     cquantize->pub.finish_pass = finish_pass2;
   }
   /* Zero the histogram or inverse color map */
-  for (i = 0; i < HIST_R_ELEMS; i++) {
+  for (i = 0; i < HIST_C0_ELEMS; i++) {
     jzero_far((void FAR *) histogram[i],
-	      HIST_G_ELEMS*HIST_B_ELEMS * SIZEOF(histcell));
+	      HIST_C1_ELEMS*HIST_C2_ELEMS * SIZEOF(histcell));
   }
 }
 
@@ -1194,11 +1217,11 @@ jinit_2pass_quantizer (j_decompress_ptr cinfo)
 
   /* Allocate the histogram/inverse colormap storage */
   cquantize->histogram = (hist3d) (*cinfo->mem->alloc_small)
-    ((j_common_ptr) cinfo, JPOOL_IMAGE, HIST_R_ELEMS * SIZEOF(hist2d));
-  for (i = 0; i < HIST_R_ELEMS; i++) {
+    ((j_common_ptr) cinfo, JPOOL_IMAGE, HIST_C0_ELEMS * SIZEOF(hist2d));
+  for (i = 0; i < HIST_C0_ELEMS; i++) {
     cquantize->histogram[i] = (hist2d) (*cinfo->mem->alloc_large)
       ((j_common_ptr) cinfo, JPOOL_IMAGE,
-       HIST_G_ELEMS*HIST_B_ELEMS * SIZEOF(histcell));
+       HIST_C1_ELEMS*HIST_C2_ELEMS * SIZEOF(histcell));
   }
 
   /* Allocate storage for the completed colormap,

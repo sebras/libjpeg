@@ -23,8 +23,14 @@ extern void * malloc ();
 /* If you have setmode() but not <io.h>, just delete this line: */
 #include <io.h>			/* to declare setmode() */
 #endif
+
+#ifdef USE_CCOMMAND		/* command-line reader for Macintosh */
+#ifdef __MWERKS__
+#include <SIOUX.h>              /* Metrowerks declares it here */
+#endif
 #ifdef THINK_C
-#include <console.h>		/* command-line reader for Macintosh */
+#include <console.h>		/* Think declares it here */
+#endif
 #endif
 
 #ifdef DONT_USE_B_MODE		/* define mode parameters for fopen() */
@@ -403,7 +409,7 @@ main (int argc, char **argv)
   int marker;
 
   /* On Mac, fetch a command line. */
-#ifdef THINK_C
+#ifdef USE_CCOMMAND
   argc = ccommand(&argv);
 #endif
 

@@ -518,13 +518,14 @@ system-dependent memory manager.
 Cray:
 
 Should you be so fortunate as to be running JPEG on a Cray YMP, there is a
-compiler bug in Cray's Standard C versions prior to 3.1.  You'll need to
-insert a line reading "#pragma novector" just before the loop	
+compiler bug in old versions of Cray's Standard C (prior to 3.1).  If you
+still have an old compiler, you'll need to insert a line reading
+"#pragma novector" just before the loop	
     for (i = 1; i <= (int) htbl->bits[l]; i++)
       huffsize[p++] = (char) l;
-in fix_huff_tbl (in V4A, line 42 of jchuff.c and line 39 of jdhuff.c).  The
-usual symptom of not adding this line is a core-dump.  See Cray's SPR 48222.
-[This bug may or may not still occur with V5; can anyone test it?]
+in fix_huff_tbl (in V5beta1, line 204 of jchuff.c and line 176 of jdhuff.c).
+[This bug may or may not still occur with the current IJG code, but it's
+probably a dead issue anyway...]
 
 
 HP-UX:
@@ -545,7 +546,7 @@ to A.08.07.  If you get complaints about "not a typedef name", you'll have to
 use makefile.unix, or run configure without the CC option.
 
 
-Macintosh MPW:
+Macintosh, MPW:
 
 We don't directly support MPW in the current release, but Larry Rosenstein
 ported an earlier version of the IJG code without very much trouble.  There's
@@ -553,7 +554,20 @@ useful notes and conversion scripts in his kit for porting PBMPLUS to MPW.
 You can obtain the kit by FTP to ftp.apple.com, files /pub/lsr/pbmplus-port*.
 
 
-Macintosh Think C:
+Macintosh, Metrowerks CodeWarrior:
+
+Metrowerks release DR2 has problems with the IJG code; don't use it.  DR3.5
+or later should be OK.
+
+The command-line-style interface can be used by defining USE_CCOMMAND and
+TWO_FILE_COMMANDLINE (see next entry for more details).
+
+On 680x0 Macs, Metrowerks defines type "double" as a 10-byte IEEE extended
+float.  jmemmgr.c won't like this: it wants sizeof(ALIGN_TYPE) to be a power
+of 2.  Add "#define ALIGN_TYPE long" to jconfig.h to eliminate the complaint.
+
+
+Macintosh, Think C:
 
 The supplied user-interface files (cjpeg.c and djpeg.c) are set up to provide
 a Unix-style command line interface.  You can use this interface on the Mac
@@ -570,7 +584,9 @@ in the distribution since they are not text files.  Use the file lists in
 any of the supplied makefiles as a guide.  Also add the ANSI and Unix C
 libraries in a separate segment.  You may need to divide the JPEG files into
 more than one segment; we recommend dividing compression and decompression
-modules.
+modules.  Define USE_CCOMMAND in jconfig.h so that the ccommand() routine is
+called.  You must also define TWO_FILE_COMMANDLINE because stdin/stdout
+don't handle binary data correctly.
 
 On 680x0 Macs, Think C defines type "double" as a 12-byte IEEE extended float.
 jmemmgr.c won't like this: it wants sizeof(ALIGN_TYPE) to be a power of 2.
@@ -682,10 +698,8 @@ Original MS C 6.0 is very buggy; it compiles incorrect code unless you turn
 off optimization entirely (remove -O from CFLAGS).  6.00A is better, but it
 still generates bad code if you enable loop optimizations (-Ol or -Ox).
 
-MS C 8.0 sometimes generates incorrect code for structure assignments in
-large memory model.  If you want to compile in large model, you may need to
-add "#define NO_STRUCT_ASSIGN" to jconfig.h.  Also, MS C 8.0 may fail to
-compile jquant1.c if optimization is turned off (yes, off).
+MS C 8.0 reportedly fails to compile jquant1.c if optimization is turned off
+(yes, off).
 
 
 SGI:

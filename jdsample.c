@@ -208,7 +208,7 @@ int_upsample (j_decompress_ptr cinfo, jpeg_component_info * compptr,
     outptr = output_data[outrow];
     outend = outptr + cinfo->output_width;
     while (outptr < outend) {
-      invalue = GETJSAMPLE(*inptr++);
+      invalue = *inptr++;	/* don't need GETJSAMPLE() here */
       for (h = h_expand; h > 0; h--) {
 	*outptr++ = invalue;
       }
@@ -244,7 +244,7 @@ h2v1_upsample (j_decompress_ptr cinfo, jpeg_component_info * compptr,
     outptr = output_data[inrow];
     outend = outptr + cinfo->output_width;
     while (outptr < outend) {
-      invalue = GETJSAMPLE(*inptr++);
+      invalue = *inptr++;	/* don't need GETJSAMPLE() here */
       *outptr++ = invalue;
       *outptr++ = invalue;
     }
@@ -273,7 +273,7 @@ h2v2_upsample (j_decompress_ptr cinfo, jpeg_component_info * compptr,
     outptr = output_data[outrow];
     outend = outptr + cinfo->output_width;
     while (outptr < outend) {
-      invalue = GETJSAMPLE(*inptr++);
+      invalue = *inptr++;	/* don't need GETJSAMPLE() here */
       *outptr++ = invalue;
       *outptr++ = invalue;
     }

@@ -31,6 +31,8 @@ SYSDEPMEM= jmemnobs.o
 LN= $(CC)
 # file deletion command
 RM= rm -f
+# file rename command
+MV= mv
 # library (.a) file creation command
 AR= ar rc
 # second step in .a creation (use "touch" if not needed)
@@ -89,8 +91,9 @@ all: ansi2knr libjpeg.a cjpeg djpeg rdjpgcom wrjpgcom
 # This rule causes ansi2knr to be invoked.
 .c.o:
 	./ansi2knr $*.c T$*.c
-	$(CC) $(CFLAGS) -o $*.o -c T$*.c
-	$(RM) T$*.c
+	$(CC) $(CFLAGS) -c T$*.c
+	$(RM) T$*.c $*.o
+	$(MV) T$*.o $*.o
 
 ansi2knr: ansi2knr.c
 	$(CC) $(CFLAGS) $(ANSI2KNRFLAGS) -o ansi2knr ansi2knr.c

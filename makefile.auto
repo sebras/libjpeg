@@ -46,6 +46,8 @@ SHELL= /bin/sh
 LN= $(CC)
 # file deletion command
 RM= rm -f
+# file rename command
+MV= mv
 # library (.a) file creation command
 AR= ar rc
 # second step in .a creation (use "touch" if not needed)
@@ -108,13 +110,14 @@ all: @ANSI2KNR@ libjpeg.a cjpeg djpeg rdjpgcom wrjpgcom
 # This rule causes ansi2knr to be invoked.
 @ISANSICOM@.c.o:
 @ISANSICOM@	./ansi2knr $(srcdir)/$*.c T$*.c
-@ISANSICOM@	$(CC) $(CFLAGS) -o $*.o -c T$*.c
-@ISANSICOM@	$(RM) T$*.c
+@ISANSICOM@	$(CC) $(CFLAGS) -c T$*.c
+@ISANSICOM@	$(RM) T$*.c $*.o
+@ISANSICOM@	$(MV) T$*.o $*.o
 
 ansi2knr: ansi2knr.c
 	$(CC) $(CFLAGS) $(ANSI2KNRFLAGS) -o ansi2knr ansi2knr.c
 
-libjpeg.a: $(LIBOBJECTS)
+libjpeg.a: @ANSI2KNR@ $(LIBOBJECTS)
 	$(RM) libjpeg.a
 	$(AR) libjpeg.a  $(LIBOBJECTS)
 	$(AR2) libjpeg.a

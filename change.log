@@ -1,6 +1,30 @@
 CHANGE LOG for Independent JPEG Group's JPEG software
 
 
+Version 5beta2  20-Aug-94
+-------------------------
+
+Modified 2-pass quantization (jquant2.c) for better results in RGB color
+space.
+
+cjpeg -smooth failed on images with (height mod 16) = 1 or 2.
+
+Tweaked memory manager allocation heuristics to reduce wasted memory.
+
+"cjpeg -dct float" didn't work on compilers that promote unsigned char
+to unsigned int, rather than int as specified by ANSI.
+
+configure & ckconfig.c didn't correctly recognize unsigned right shift
+on machines with 64-bit-wide longs.
+
+configure now detects inline-function bug in DEC AXP compiler.
+
+Worked around unsigned-comparison bug on Cray C90.
+
+When using ansi2knr, don't assume cc honors -o switch.  Also ensure
+"make libjpeg.a" will build ansi2knr if needed.
+
+
 Version 5beta1  28-July-94
 --------------------------
 

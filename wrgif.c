@@ -244,7 +244,7 @@ compress_byte (gif_dest_ptr dinfo, int c)
       disp = 1;
     else
       disp = HSIZE - i;
-    while (1) {
+    for (;;) {
       i -= disp;
       if (i < 0)
 	i += HSIZE;

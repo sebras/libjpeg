@@ -1,8 +1,8 @@
 The Independent JPEG Group's JPEG software
 ==========================================
 
-README for release 5beta1 of 28-July-94
-=======================================
+README for release 5beta2 of 20-Aug-94
+======================================
 
 This distribution contains a BETA TEST release of the Independent JPEG
 Group's free JPEG software.  You are welcome to redistribute this software and
@@ -129,6 +129,10 @@ the Independent JPEG Group".
 full responsibility for any undesirable consequences; the authors accept
 NO LIABILITY for damages of any kind.
 
+These conditions apply to any software derived from or based on the IJG code,
+not only to use of the unmodified library.  If you use our work, you ought
+to acknowledge us.
+
 Permission is NOT granted for the use of any IJG author's name or company name
 in advertising or publicity relating to this software or products derived from
 it.  This software may be referred to only as "the Independent JPEG Group's
@@ -251,7 +255,7 @@ places, with file names changed to include the proper version numbers.]
 The "official" archive site for this software is ftp.uu.net (Internet
 address 192.48.96.9).  The most recent released version can always be found
 there in directory graphics/jpeg.  This particular version will be archived
-as graphics/jpeg/jpegsrc.v5beta1.tar.gz.  If you are on the Internet, you
+as graphics/jpeg/jpegsrc.v5beta2.tar.gz.  If you are on the Internet, you
 can retrieve files from UUNET by standard anonymous FTP.  If you don't have
 FTP access, UUNET's archives are also available via UUCP; contact
 postmaster@uunet.uu.net for information on retrieving files that way.
@@ -262,7 +266,7 @@ submissions.  However, only ftp.uu.net is guaranteed to have the latest
 official version.
 
 You can also obtain this software from CompuServe, in the GRAPHSUPPORT forum
-(GO GRAPHSUP); this version will be file jps5b1.zip in library 15.  Again,
+(GO GRAPHSUP); this version will be file jpg5b2.zip in library 15.  Again,
 CompuServe is not guaranteed to have the very latest version.
 
 The JPEG FAQ (Frequently Asked Questions) article is a useful source of
@@ -329,7 +333,7 @@ TO DO
 =====
 
 This version contains all of the functionality intended for the official
-version 5 release, but it probably also contains bugs.  Please report any
+version 5 release, but it may also contain bugs.  Please report any
 problems, installation difficulties, crummy documentation, or anything
 else that needs to be improved.
 

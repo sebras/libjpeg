@@ -204,29 +204,35 @@ pre_process_context (j_compress_ptr cinfo,
   JDIMENSION inrows;
   jpeg_component_info * compptr;
 
-  while (*in_row_ctr < in_rows_avail &&
-	 *out_row_group_ctr < out_row_groups_avail) {
-    /* Do color conversion to fill the conversion buffer. */
-    inrows = in_rows_avail - *in_row_ctr;
-    numrows = prep->next_buf_stop - prep->next_buf_row;
-    numrows = (int) MIN((JDIMENSION) numrows, inrows);
-    (*cinfo->cconvert->color_convert) (cinfo, input_buf + *in_row_ctr,
-				       prep->color_buf,
-				       (JDIMENSION) prep->next_buf_row,
-				       numrows);
-    /* Pad at top of image, if first time through */
-    if (prep->rows_to_go == cinfo->image_height) {
-      for (ci = 0; ci < cinfo->num_components; ci++) {
-	int row;
-	for (row = 1; row <= cinfo->max_v_samp_factor; row++) {
-	  jcopy_sample_rows(prep->color_buf[ci], 0, prep->color_buf[ci], -row,
-			    1, cinfo->image_width);
+  while (*out_row_group_ctr < out_row_groups_avail) {
+    if (*in_row_ctr < in_rows_avail) {
+      /* Do color conversion to fill the conversion buffer. */
+      inrows = in_rows_avail - *in_row_ctr;
+      numrows = prep->next_buf_stop - prep->next_buf_row;
+      numrows = (int) MIN((JDIMENSION) numrows, inrows);
+      (*cinfo->cconvert->color_convert) (cinfo, input_buf + *in_row_ctr,
+					 prep->color_buf,
+					 (JDIMENSION) prep->next_buf_row,
+					 numrows);
+      /* Pad at top of image, if first time through */
+      if (prep->rows_to_go == cinfo->image_height) {
+	for (ci = 0; ci < cinfo->num_components; ci++) {
+	  int row;
+	  for (row = 1; row <= cinfo->max_v_samp_factor; row++) {
+	    jcopy_sample_rows(prep->color_buf[ci], 0,
+			      prep->color_buf[ci], -row,
+			      1, cinfo->image_width);
+	  }
 	}
       }
+      *in_row_ctr += numrows;
+      prep->next_buf_row += numrows;
+      prep->rows_to_go -= numrows;
+    } else {
+      /* Return for more data, unless we are at the bottom of the image. */
+      if (prep->rows_to_go != 0)
+	break;
     }
-    *in_row_ctr += numrows;
-    prep->next_buf_row += numrows;
-    prep->rows_to_go -= numrows;
     /* If at bottom of image, pad to fill the conversion buffer. */
     if (prep->rows_to_go == 0 &&
 	prep->next_buf_row < prep->next_buf_stop) {

@@ -57,15 +57,15 @@
 #ifdef HAVE_UNSIGNED_CHAR
 
 typedef unsigned char JSAMPLE;
-#define GETJSAMPLE(value)  (value)
+#define GETJSAMPLE(value)  ((int) (value))
 
 #else /* not HAVE_UNSIGNED_CHAR */
 
 typedef char JSAMPLE;
 #ifdef CHAR_IS_UNSIGNED
-#define GETJSAMPLE(value)  (value)
+#define GETJSAMPLE(value)  ((int) (value))
 #else
-#define GETJSAMPLE(value)  ((value) & 0xFF)
+#define GETJSAMPLE(value)  ((int) (value) & 0xFF)
 #endif /* CHAR_IS_UNSIGNED */
 
 #endif /* HAVE_UNSIGNED_CHAR */
@@ -82,7 +82,7 @@ typedef char JSAMPLE;
  */
 
 typedef short JSAMPLE;
-#define GETJSAMPLE(value)  (value)
+#define GETJSAMPLE(value)  ((int) (value))
 
 #define MAXJSAMPLE	4095
 #define CENTERJSAMPLE	2048
