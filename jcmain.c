@@ -1,7 +1,7 @@
 /*
  * jcmain.c
  *
- * Copyright (C) 1991, Thomas G. Lane.
+ * Copyright (C) 1991, 1992, Thomas G. Lane.
  * This file is part of the Independent JPEG Group's software.
  * For conditions of distribution and use, see the accompanying README file.
  *
@@ -24,6 +24,9 @@
 #ifdef INCLUDES_ARE_ANSI
 #include <stdlib.h>		/* to declare exit() */
 #endif
+#ifdef NEED_SIGNAL_CATCHER
+#include <signal.h>		/* to declare signal() */
+#endif
 
 #ifdef THINK_C
 #include <console.h>		/* command-line reader for Macintosh */
@@ -36,6 +39,18 @@
 #define READ_BINARY	"rb"
 #define WRITE_BINARY	"wb"
 #endif
+
+#ifndef EXIT_FAILURE		/* define exit() codes if not provided */
+#define EXIT_FAILURE  1
+#endif
+#ifndef EXIT_SUCCESS
+#ifdef VMS
+#define EXIT_SUCCESS  1		/* VMS is very nonstandard */
+#else
+#define EXIT_SUCCESS  0
+#endif
+#endif
+
 
 #include "jversion.h"		/* for version message */
 
@@ -75,12 +90,6 @@
 
 static boolean is_targa;	/* records user -T switch */
 
-#ifdef MSDOS
-#define JPEG_EXT        "jpg"
-static char *input_ext = "tga";
-#endif
-
-
 
 LOCAL void
 select_file_type (compress_info_ptr cinfo)
@@ -103,25 +112,16 @@ select_file_type (compress_info_ptr cinfo)
 #ifdef GIF_SUPPORTED
   case 'G':
     jselrgif(cinfo);
-#ifdef MSDOS
-    input_ext = "gif";
-#endif
     break;
 #endif
 #ifdef PPM_SUPPORTED
   case 'P':
     jselrppm(cinfo);
-#ifdef MSDOS
-    input_ext = "ppm";
-#endif
     break;
 #endif
 #ifdef RLE_SUPPORTED
   case 'R':
     jselrrle(cinfo);
-#ifdef MSDOS
-    input_ext = "rle";
-#endif
     break;
 #endif
 #ifdef TARGA_SUPPORTED
@@ -131,7 +131,7 @@ select_file_type (compress_info_ptr cinfo)
 #endif
   default:
 #ifdef TARGA_SUPPORTED
-    ERREXIT(cinfo->emethods, "Unrecognized input file format--did you forget -T ?");
+    ERREXIT(cinfo->emethods, "Unrecognized input file format --- did you forget -T ?");
 #else
     ERREXIT(cinfo->emethods, "Unrecognized input file format");
 #endif
@@ -164,65 +164,49 @@ c_ui_method_selection (compress_info_ptr cinfo)
 }
 
 
+/*
+ * Signal catcher to ensure that temporary files are removed before aborting.
+ * NB: for Amiga Manx C this is actually a global routine named _abort();
+ * see -Dsignal_catcher=_abort in CFLAGS.  Talk about bogus...
+ */
+
+#ifdef NEED_SIGNAL_CATCHER
+
+static external_methods_ptr emethods; /* for access to free_all */
+
+GLOBAL void
+signal_catcher (int signum)
+{
+  emethods->trace_level = 0;	/* turn off trace output */
+  (*emethods->free_all) ();	/* clean up memory allocation & temp files */
+  exit(EXIT_FAILURE);
+}
+
+#endif
+
+
 LOCAL void
 usage (char * progname)
 /* complain about bad command line */
 {
   fprintf(stderr, "usage: %s ", progname);
-  fprintf(stderr, "[-Q quality 0..100] [-o] [-T] [-I] [-a] [-d]");
+  fprintf(stderr, "[-Q quality 0..100] [-o] [-T] [-I] [-a] [-d] [-m mem]");
 #ifdef TWO_FILE_COMMANDLINE
   fprintf(stderr, " inputfile outputfile\n");
 #else
   fprintf(stderr, " [inputfile]\n");
 #endif
-  exit(2);
+  exit(EXIT_FAILURE);
 }
 
-#ifdef MSDOS
-
-/*
- * Compose a filename given a base name and extension.  If file had
- * and extension, throw it away.  We must scan the filename from the
- * right looking for a '.', but stopping if we encounter a path
- * separator character (just in case we are handled a long pathname
- * in which one of the directories has a '.', but the file doesn't).
- */
-
-LOCAL void
-fix_msdos_filename (char *dest, char *src, char *ext)
-{
-  int i, l;
-  char *dotp;
-
-  strcpy(dest, src);
-  l = strlen(dest);
-  dotp = dest + l; /* Assume there is no extension */
-
-  for (i = --l; i >= 0; --i) {
-    if (dest[i] == '.') {
-      dotp = dest + i;
-      break;
-    } else if ( dest[i] == '/' || dest[i] == '\\' ||
-                dest[i] == ':') {
-      break;
-    }
-  }
-  *dotp++ = '.';
-  strcpy(dotp, ext);
-}
-
-#endif /* MSDOS */
 
 /*
  * The main program.
  */
 
-GLOBAL void
+GLOBAL int
 main (int argc, char **argv)
 {
-#ifdef MSDOS
-  char infname[FILENAME_MAX], outfname[FILENAME_MAX];
-#endif
   struct compress_info_struct cinfo;
   struct compress_methods_struct c_methods;
   struct external_methods_struct e_methods;
@@ -237,8 +221,17 @@ main (int argc, char **argv)
   cinfo.methods = &c_methods;
   cinfo.emethods = &e_methods;
   jselerror(&e_methods);	/* error/trace message routines */
-  jselvirtmem(&e_methods);	/* memory allocation routines */
+  jselmemmgr(&e_methods);	/* memory allocation routines */
   c_methods.c_ui_method_selection = c_ui_method_selection;
+
+  /* Now OK to enable signal catcher. */
+#ifdef NEED_SIGNAL_CATCHER
+  emethods = &e_methods;
+  signal(SIGINT, signal_catcher);
+#ifdef SIGTERM			/* not all systems have SIGTERM */
+  signal(SIGTERM, signal_catcher);
+#endif
+#endif
 
   /* Set up default JPEG parameters. */
   j_c_defaults(&cinfo, 75, FALSE); /* default quality level = 75 */
@@ -246,7 +239,7 @@ main (int argc, char **argv)
 
   /* Scan command line options, adjust parameters */
   
-  while ((c = egetopt(argc, argv, "IQ:Taod")) != EOF)
+  while ((c = egetopt(argc, argv, "IQ:Taom:d")) != EOF)
     switch (c) {
     case 'I':			/* Create noninterleaved file. */
 #ifdef MULTISCAN_FILES_SUPPORTED
@@ -254,7 +247,7 @@ main (int argc, char **argv)
 #else
       fprintf(stderr, "%s: sorry, multiple-scan support was not compiled\n",
 	      argv[0]);
-      exit(2);
+      exit(EXIT_FAILURE);
 #endif
       break;
     case 'Q':			/* Quality factor. */
@@ -279,7 +272,7 @@ main (int argc, char **argv)
 #else
       fprintf(stderr, "%s: sorry, arithmetic coding not supported\n",
 	      argv[0]);
-      exit(2);
+      exit(EXIT_FAILURE);
 #endif
       break;
     case 'o':			/* Enable entropy parm optimization. */
@@ -288,8 +281,21 @@ main (int argc, char **argv)
 #else
       fprintf(stderr, "%s: sorry, entropy optimization was not compiled\n",
 	      argv[0]);
-      exit(2);
+      exit(EXIT_FAILURE);
 #endif
+      break;
+    case 'm':			/* Maximum memory in Kb (or Mb with 'm'). */
+      { long lval;
+	char ch = 'x';
+
+	if (optarg == NULL)
+	  usage(argv[0]);
+	if (sscanf(optarg, "%ld%c", &lval, &ch) < 1)
+	  usage(argv[0]);
+	if (ch == 'm' || ch == 'M')
+	  lval *= 1000L;
+	e_methods.max_memory_to_use = lval * 1000L;
+      }
       break;
     case 'd':			/* Debugging. */
       e_methods.trace_level++;
@@ -309,42 +315,18 @@ main (int argc, char **argv)
 
 #ifdef TWO_FILE_COMMANDLINE
 
-#  ifdef MSDOS
-
-  if (optind < argc-2 || optind > argc-1) {
-    usage(argv[0]);
-  }
-  fix_msdos_filename(infname, argv[optind], input_ext);
-  if (optind == argc-2) {
-    fix_msdos_filename(outfname, argv[optind+1], JPEG_EXT);
-  } else {
-    fix_msdos_filename(outfname, argv[optind], JPEG_EXT);
-  }
-  if ((cinfo.input_file = fopen(infname, READ_BINARY)) == NULL) {
-    fprintf(stderr, "%s: can't open %s\n", argv[0], infname);
-    exit(2);
-  }
-  if ((cinfo.output_file = fopen(outfname, WRITE_BINARY)) == NULL) {
-    fprintf(stderr, "%s: can't open %s\n", argv[0], outfname);
-    exit(2);
-  }
-
-#  else
-
   if (optind != argc-2) {
     fprintf(stderr, "%s: must name one input and one output file\n", argv[0]);
     usage(argv[0]);
   }
   if ((cinfo.input_file = fopen(argv[optind], READ_BINARY)) == NULL) {
     fprintf(stderr, "%s: can't open %s\n", argv[0], argv[optind]);
-    exit(2);
+    exit(EXIT_FAILURE);
   }
   if ((cinfo.output_file = fopen(argv[optind+1], WRITE_BINARY)) == NULL) {
     fprintf(stderr, "%s: can't open %s\n", argv[0], argv[optind+1]);
-    exit(2);
+    exit(EXIT_FAILURE);
   }
-
-#  endif
 
 #else /* not TWO_FILE_COMMANDLINE -- use Unix style */
 
@@ -358,7 +340,7 @@ main (int argc, char **argv)
   if (optind < argc) {
     if ((cinfo.input_file = fopen(argv[optind], READ_BINARY)) == NULL) {
       fprintf(stderr, "%s: can't open %s\n", argv[0], argv[optind]);
-      exit(2);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -370,13 +352,7 @@ main (int argc, char **argv)
   /* Do it to it! */
   jpeg_compress(&cinfo);
 
-  /* Release memory. */
-  j_c_free_defaults(&cinfo);
-#ifdef MEM_STATS
-  if (e_methods.trace_level > 0) /* Optional memory-usage statistics */
-    j_mem_stats();
-#endif
-
   /* All done. */
-  exit(0);
+  exit(EXIT_SUCCESS);
+  return 0;			/* suppress no-return-value warnings */
 }
