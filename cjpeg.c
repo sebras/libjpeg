@@ -255,6 +255,7 @@ usage (void)
   fprintf(stderr, "  -smooth N      Smooth dithered input (N=1..100 is strength)\n");
 #endif
   fprintf(stderr, "  -maxmemory N   Maximum memory to use (in kbytes)\n");
+  fprintf(stderr, "  -outfile name  Specify name for output file\n");
   fprintf(stderr, "  -verbose  or  -debug   Emit debug output\n");
   fprintf(stderr, "Switches for wizards:\n");
 #ifdef C_ARITH_CODING_SUPPORTED
@@ -468,29 +469,33 @@ set_sample_factors (j_compress_ptr cinfo, char *arg)
 
 
 LOCAL int
-parse_switches (j_compress_ptr cinfo, int last_file_arg_seen,
-		int argc, char **argv)
-/* Initialize cinfo with default switch settings, then parse option switches.
+parse_switches (j_compress_ptr cinfo, int argc, char **argv,
+		int last_file_arg_seen, boolean for_real)
+/* Parse optional switches.
  * Returns argv[] index of first file-name argument (== argc if none).
  * Any file names with indexes <= last_file_arg_seen are ignored;
  * they have presumably been processed in a previous iteration.
  * (Pass 0 for last_file_arg_seen on the first or only iteration.)
+ * for_real is FALSE on the first (dummy) pass; we may skip any expensive
+ * processing.
  */
 {
   int argn;
   char * arg;
-  int quality = 75;		/* -quality parameter */
-  boolean force_baseline = FALSE; /* by default, allow 16-bit quantizers */
+  int quality;			/* -quality parameter */
+  int q_scale_factor;		/* scaling percentage for -qtables */
+  boolean force_baseline;
   char * qtablefile = NULL;	/* saves -qtables filename if any */
-  int q_scale_factor = 100;	/* default to no scaling for -qtables */
   char * qslotsarg = NULL;	/* saves -qslots parm if any */
   char * samplearg = NULL;	/* saves -sample parm if any */
 
   /* Set up default JPEG parameters. */
-  /* Note that default -quality level here need not, and does not,
+  /* Note that default -quality level need not, and does not,
    * match the default scaling for an explicit -qtables argument.
    */
-  jpeg_set_defaults(cinfo);	/* note: default quality level = 75 */
+  quality = 75;			/* default -quality value */
+  q_scale_factor = 100;		/* default to no scaling for -qtables */
+  force_baseline = FALSE;	/* by default, allow 16-bit quantizers */
   is_targa = FALSE;
   outfilename = NULL;
   cinfo->err->trace_level = 0;
@@ -522,8 +527,6 @@ parse_switches (j_compress_ptr cinfo, int last_file_arg_seen,
     } else if (keymatch(arg, "baseline", 1)) {
       /* Force baseline output (8-bit quantizer values). */
       force_baseline = TRUE;
-      /* Set quant tables (will be overridden if -qtables also given). */
-      jpeg_set_quality(cinfo, quality, force_baseline);
 
     } else if (keymatch(arg, "dct", 2)) {
       /* Select DCT algorithm. */
@@ -587,7 +590,7 @@ parse_switches (j_compress_ptr cinfo, int last_file_arg_seen,
       exit(EXIT_FAILURE);
 #endif
 
-    } else if (keymatch(arg, "outfile", 3)) {
+    } else if (keymatch(arg, "outfile", 4)) {
       /* Set output file name. */
       if (++argn >= argc)	/* advance to next argument */
 	usage();
@@ -599,8 +602,6 @@ parse_switches (j_compress_ptr cinfo, int last_file_arg_seen,
 	usage();
       if (sscanf(argv[argn], "%d", &quality) != 1)
 	usage();
-      /* Set quant tables (will be overridden if -qtables also given). */
-      jpeg_set_quality(cinfo, quality, force_baseline);
       /* Change scale factor in case -qtables is present. */
       q_scale_factor = jpeg_quality_scaling(quality);
 
@@ -673,14 +674,22 @@ parse_switches (j_compress_ptr cinfo, int last_file_arg_seen,
 
   /* Post-switch-scanning cleanup */
 
-  if (qtablefile != NULL)	/* process -qtables if it was present */
-    read_quant_tables(cinfo, qtablefile, q_scale_factor, force_baseline);
+  if (for_real) {
 
-  if (qslotsarg != NULL)	/* process -qslots if it was present */
-    set_quant_slots(cinfo, qslotsarg);
+    /* Set quantization tables for selected quality. */
+    /* Some or all may be overridden if -qtables is present. */
+    jpeg_set_quality(cinfo, quality, force_baseline);
 
-  if (samplearg != NULL)	/* process -sample if it was present */
-    set_sample_factors(cinfo, samplearg);
+    if (qtablefile != NULL)	/* process -qtables if it was present */
+      read_quant_tables(cinfo, qtablefile, q_scale_factor, force_baseline);
+
+    if (qslotsarg != NULL)	/* process -qslots if it was present */
+      set_quant_slots(cinfo, qslotsarg);
+
+    if (samplearg != NULL)	/* process -sample if it was present */
+      set_sample_factors(cinfo, samplearg);
+
+  }
 
   return argn;			/* return index of next arg (file name) */
 }
@@ -730,14 +739,22 @@ main (int argc, char **argv)
 #endif
 #endif
 
-  /* Scan command line to find file names. */
-  /* It is convenient to use just one switch-parsing routine, but the switch
+  /* Initialize JPEG parameters.
+   * Much of this may be overridden later.
+   * In particular, we don't yet know the input file's color space,
+   * but we need to provide some value for jpeg_set_defaults() to work.
+   */
+
+  cinfo.in_color_space = JCS_RGB; /* arbitrary guess */
+  jpeg_set_defaults(&cinfo);
+
+  /* Scan command line to find file names.
+   * It is convenient to use just one switch-parsing routine, but the switch
    * values read here are ignored; we will rescan the switches after opening
    * the input file.
    */
 
-  cinfo.in_color_space = JCS_RGB; /* allow first jpeg_set_defaults() to work */
-  file_index = parse_switches(&cinfo, 0, argc, argv);
+  file_index = parse_switches(&cinfo, argc, argv, 0, FALSE);
 
 #ifdef TWO_FILE_COMMANDLINE
   /* Must have either -outfile switch or explicit output file name */
@@ -823,8 +840,11 @@ main (int argc, char **argv)
   /* Read the input file header to obtain file size & colorspace. */
   (*src_mgr->start_input) (&cinfo, src_mgr);
 
+  /* Now that we know input colorspace, fix colorspace-dependent defaults */
+  jpeg_default_colorspace(&cinfo);
+
   /* Adjust default compression parameters by re-parsing the options */
-  file_index = parse_switches(&cinfo, 0, argc, argv);
+  file_index = parse_switches(&cinfo, argc, argv, 0, TRUE);
 
   /* Specify data destination for compression */
   jpeg_stdio_dest(&cinfo, output_file);

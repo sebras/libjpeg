@@ -366,7 +366,8 @@ finish_output_bmp (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo)
       ((j_common_ptr) cinfo, dest->whole_image, row-1, FALSE);
     data_ptr = image_ptr[0];
     for (col = dest->row_width; col > 0; col--) {
-      putc(GETJSAMPLE(*data_ptr++), outfile);
+      putc(GETJSAMPLE(*data_ptr), outfile);
+      data_ptr++;
     }
   }
   if (progress != NULL)

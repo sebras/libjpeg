@@ -14,9 +14,10 @@ libjpeg.lib
 ; * * * COMPILER OPTIONS * * *  
 .C[-P]        ; absolute calls
 .C[-M]        ; and no string merging, folks
-.C[-w-par]    ; no "parameter xxxx unused"
-.C[-wsig]     ; warn if significant digits may be lost
 .C[-w-cln]    ; no "constant is long" warnings
+.C[-w-par]    ; no "parameter xxxx unused"
+.C[-w-rch]    ; no "unreachable code"
+.C[-wsig]     ; warn if significant digits may be lost
 .L[-J]        ; link new Obj-format (so we get a library)
 =
 ; * * * * List of modules * * * * 

@@ -458,6 +458,7 @@ start_input_tga (j_compress_ptr cinfo, cjpeg_source_ptr sinfo)
   }
 
   cinfo->input_components = components;
+  cinfo->data_precision = 8;
   cinfo->image_width = width;
   cinfo->image_height = height;
 }

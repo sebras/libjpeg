@@ -106,7 +106,10 @@ read_gif_map (j_decompress_ptr cinfo, FILE * infile)
     B = getc(infile);
     if (R == EOF || G == EOF || B == EOF)
       ERREXIT(cinfo, JERR_BAD_CMAP_FILE);
-    add_map_entry(cinfo, R, G, B);
+    add_map_entry(cinfo,
+		  R << (BITS_IN_JSAMPLE-8),
+		  G << (BITS_IN_JSAMPLE-8),
+		  B << (BITS_IN_JSAMPLE-8));
   }
 }
 

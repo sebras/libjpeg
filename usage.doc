@@ -1,8 +1,8 @@
 USAGE instructions for the Independent JPEG Group's JPEG software
 =================================================================
 
-This file describes usage of the JPEG conversion programs "cjpeg" and "djpeg",
-as well as the utility programs "rdjpgcom" and "wrjpgcom".  (See the other
+This file describes usage of the JPEG conversion programs cjpeg and djpeg,
+as well as the utility programs rdjpgcom and wrjpgcom.  (See the other
 documentation files if you wish to use the JPEG library within your own
 programs.)
 
@@ -13,11 +13,11 @@ pages in files cjpeg.1, djpeg.1, rdjpgcom.1, wrjpgcom.1.
 INTRODUCTION
 
 These programs implement JPEG image compression and decompression.  JPEG
-(pronounced "jay-peg") is a standardized compression method for full-color and
-gray-scale images.  JPEG is designed to handle "real-world" scenes, for
-example scanned photographs.  Cartoons, line drawings, and other non-realistic
-images are not JPEG's strong suit; on this sort of material you may get poor
-image quality and/or little compression.
+(pronounced "jay-peg") is a standardized compression method for full-color
+and gray-scale images.  JPEG is designed to handle "real-world" scenes,
+for example scanned photographs.  Cartoons, line drawings, and other
+non-realistic images are not JPEG's strong suit; on that sort of material
+you may get poor image quality and/or little compression.
 
 JPEG is lossy, meaning that the output image is not necessarily identical to
 the input image.  Hence you should not use JPEG if you have to have identical
@@ -98,6 +98,7 @@ The basic command line switches for cjpeg are:
 			an "identification" field will not be automatically
 			recognized by cjpeg; for such files you must specify
 			-targa to make cjpeg treat the input as Targa format.
+			For most Targa files, you won't need this switch.
 
 The -quality switch lets you trade off compressed file size against quality of
 the reconstructed image: the higher the quality setting, the larger the JPEG
@@ -408,7 +409,7 @@ the JPEG file is read from standard input.  (This may not work on some
 operating systems, if binary data can't be read from stdin.)
 
 wrjpgcom adds a COM block, containing text you provide, to a JPEG file.
-Ordinarily, the COM block is added after any existing COM blocks; but you
+Ordinarily, the COM block is added after any existing COM blocks, but you
 can delete the old COM blocks if you wish.  wrjpgcom produces a new JPEG
 file; it does not modify the input file.  DO NOT try to overwrite the input
 file by directing wrjpgcom's output back into it; on most systems this will
@@ -424,29 +425,24 @@ On most non-Unix systems, the syntax is
 	wrjpgcom [switches] inputfilename outputfilename
 where both input and output file names must be given explicitly.
 
-wrjpgcom understands two switches:
+wrjpgcom understands three switches:
 	-replace		 Delete any existing COM blocks from the file.
 	-comment "Comment text"	 Supply new COM text on command line.
-(These can be abbreviated to "-r" and "-c".)  If you have only one line of
-comment text to add, you can provide it on the command line with -comment.
-On most operating systems, the comment text must be surrounded with quotes
-so that it is treated as a single argument.
+        -cfile name		 Read text for new COM block from named file.
+(Switch names can be abbreviated.)  If you have only one line of comment text
+to add, you can provide it on the command line with -comment.  The comment
+text must be surrounded with quotes so that it is treated as a single
+argument.  Longer comments can be read from a text file.
 
-If your comment text is longer than one line, omit the -comment switch from
-the command line.  In this case wrjpgcom will read the comment text from
-standard input (an input file name MUST be supplied so that the source JPEG
-file comes from somewhere else).  You can enter multiple lines, up to 64KB
-worth.  Type an end-of-file indicator (usually control-D or control-Z) to
-terminate the comment text entry.
+If you give neither -comment nor -cfile, then wrjpgcom will read the comment
+text from standard input.  (In this case an input image file name MUST be
+supplied, so that the source JPEG file comes from somewhere else.)  You can
+enter multiple lines, up to 64KB worth.  Type an end-of-file indicator
+(usually control-D or control-Z) to terminate the comment text entry.
 
 wrjpgcom will not add a COM block if the provided comment string is empty.
 Therefore -replace -comment "" can be used to delete all COM blocks from a
 file.
-
-You can supply the comment text from an existing text file by redirecting
-standard input, for example
-	wrjpgcom infile.jpg <comment.txt >outfile.jpg	(for Unix)
-	wrjpgcom infile.jpg outfile.jpg <comment.txt	(non-Unix)
 
 These utility programs do not depend on the IJG JPEG library.  In
 particular, the source code for rdjpgcom is intended as an illustration of

@@ -1,6 +1,6 @@
 # Makefile for Independent JPEG Group's software
 
-# This makefile is for use with MMS on VAX/VMS systems.
+# This makefile is for use with MMS on Digital VMS systems.
 # Thanks to Rick Dyson (dyson@iowasp.physics.uiowa.edu)
 # and Tim Bell (tbell@netcom.com) for their help.
 
@@ -10,7 +10,11 @@
 CFLAGS= $(CFLAGS) /NoDebug /Optimize
 # Generally, we recommend defining any configuration symbols in jconfig.h,
 # NOT via /Define switches here.
-OPT= Sys$Disk:[]MAKVMS.OPT
+.ifdef ALPHA
+OPT=
+.else
+OPT= ,Sys$Disk:[]MAKVMS.OPT/Option
+.endif
 
 # Put here the object file name for the correct system-dependent memory
 # manager file.  For Unix this is usually jmemnobs.o, but you may want
@@ -30,7 +34,8 @@ LIBSOURCES= jcapi.c jccoefct.c jccolor.c jcdctmgr.c jchuff.c jcmainct.c \
         jmemmgr.c jmemansi.c jmemname.c jmemnobs.c jmemdos.c
 # source files: cjpeg/djpeg applications, also rdjpgcom/wrjpgcom
 APPSOURCES= cjpeg.c djpeg.c rdcolmap.c rdppm.c wrppm.c rdgif.c wrgif.c \
-        rdtarga.c wrtarga.c rdbmp.c wrbmp.c rdjpgcom.c wrjpgcom.c
+        rdtarga.c wrtarga.c rdbmp.c wrbmp.c rdrle.c wrrle.c rdjpgcom.c \
+        wrjpgcom.c
 SOURCES= $(LIBSOURCES) $(APPSOURCES)
 # files included by source files
 INCLUDES= jdct.h jerror.h jinclude.h jmemsys.h jmorecfg.h jpegint.h \
@@ -62,11 +67,13 @@ DLIBOBJECTS= jdapi.obj jdatasrc.obj jdmaster.obj jdmarker.obj jdmainct.obj \
 # These objectfiles are included in libjpeg.olb
 LIBOBJECTS= $(CLIBOBJECTS) $(DLIBOBJECTS) $(COMOBJECTS)
 # object files for cjpeg and djpeg applications (excluding library files)
-COBJECTS= cjpeg.obj rdppm.obj rdgif.obj rdtarga.obj rdbmp.obj
-DOBJECTS= djpeg.obj wrppm.obj wrgif.obj wrtarga.obj wrbmp.obj rdcolmap.obj
+COBJECTS= cjpeg.obj rdppm.obj rdgif.obj rdtarga.obj rdrle.obj rdbmp.obj
+DOBJECTS= djpeg.obj wrppm.obj wrgif.obj wrtarga.obj wrrle.obj wrbmp.obj \
+        rdcolmap.obj
 # objectfile lists with commas --- what a crock
-COBJLIST= cjpeg.obj,rdppm.obj,rdgif.obj,rdtarga.obj,rdbmp.obj
-DOBJLIST= djpeg.obj,wrppm.obj,wrgif.obj,wrtarga.obj,wrbmp.obj,rdcolmap.obj
+COBJLIST= cjpeg.obj,rdppm.obj,rdgif.obj,rdtarga.obj,rdrle.obj,rdbmp.obj
+DOBJLIST= djpeg.obj,wrppm.obj,wrgif.obj,wrtarga.obj,wrrle.obj,wrbmp.obj,\
+          rdcolmap.obj
 LIBOBJLIST= jcapi.obj,jcparam.obj,jdatadst.obj,jcmaster.obj,jcmarker.obj,\
           jcmainct.obj,jcprepct.obj,jccoefct.obj,jccolor.obj,jcsample.obj,\
           jchuff.obj,jcdctmgr.obj,jfdctfst.obj,jfdctflt.obj,jfdctint.obj,\
@@ -78,7 +85,7 @@ LIBOBJLIST= jcapi.obj,jcparam.obj,jdatadst.obj,jcmaster.obj,jcmarker.obj,\
 
 
 .first
-	@ Define Sys Sys$Library
+	@- Define /NoLog Sys Sys$Library
 
 ALL : libjpeg.olb cjpeg.exe djpeg.exe rdjpgcom.exe wrjpgcom.exe
 	@ Continue
@@ -87,16 +94,19 @@ libjpeg.olb : $(LIBOBJECTS)
 	Library /Create libjpeg.olb $(LIBOBJLIST)
 
 cjpeg.exe : $(COBJECTS) libjpeg.olb
-	$(LINK) $(LFLAGS) /Executable = cjpeg.exe $(COBJLIST),libjpeg.olb/Library,$(OPT)/Option
+	$(LINK) $(LFLAGS) /Executable = cjpeg.exe $(COBJLIST),libjpeg.olb/Library$(OPT)
 
 djpeg.exe : $(DOBJECTS) libjpeg.olb
-	$(LINK) $(LFLAGS) /Executable = djpeg.exe $(DOBJLIST),libjpeg.olb/Library,$(OPT)/Option
+	$(LINK) $(LFLAGS) /Executable = djpeg.exe $(DOBJLIST),libjpeg.olb/Library$(OPT)
 
-rdjpgcom.exe: rdjpgcom.obj
-	$(LINK) $(LFLAGS) /Executable = rdjpgcom.exe rdjpgcom.obj,$(OPT)/Option
+rdjpgcom.exe : rdjpgcom.obj
+	$(LINK) $(LFLAGS) /Executable = rdjpgcom.exe rdjpgcom.obj$(OPT)
 
-wrjpgcom.exe: wrjpgcom.obj
-	$(LINK) $(LFLAGS) /Executable = wrjpgcom.exe wrjpgcom.obj,$(OPT)/Option
+wrjpgcom.exe : wrjpgcom.obj
+	$(LINK) $(LFLAGS) /Executable = wrjpgcom.exe wrjpgcom.obj$(OPT)
+
+jconfig.h : jconfig.vms
+	@- Copy jconfig.vms jconfig.h
 
 clean :
 	@- Set Protection = Owner:RWED *.*;-1
@@ -105,7 +115,7 @@ clean :
 	- Delete /NoLog /NoConfirm *.OBJ;
 
 test : cjpeg.exe djpeg.exe
-	mcr sys$disk:[]djpeg -dct int      -outfile testout.ppm testorig.jpg
+	mcr sys$disk:[]djpeg -dct int -ppm -outfile testout.ppm testorig.jpg
 	mcr sys$disk:[]djpeg -dct int -gif -outfile testout.gif testorig.jpg
 	mcr sys$disk:[]cjpeg -dct int      -outfile testout.jpg testimg.ppm
 	- Backup /Compare/Log	  testimg.ppm testout.ppm
@@ -165,5 +175,7 @@ rdtarga.obj : rdtarga.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerro
 wrtarga.obj : wrtarga.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
 rdbmp.obj : rdbmp.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
 wrbmp.obj : wrbmp.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
+rdrle.obj : rdrle.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
+wrrle.obj : wrrle.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
 rdjpgcom.obj : rdjpgcom.c jinclude.h jconfig.h
 wrjpgcom.obj : wrjpgcom.c jinclude.h jconfig.h

@@ -1,4 +1,4 @@
-.TH DJPEG 1 "19 July 1994"
+.TH DJPEG 1 "28 August 1994"
 .SH NAME
 djpeg \- decompress a JPEG file to an image file
 .SH SYNOPSIS
@@ -168,6 +168,9 @@ in thousands of bytes, or millions of bytes if "M" is attached to the
 number.  For example,
 .B \-max 4m
 selects 4000000 bytes.  If more space is needed, temporary files will be used.
+.TP
+.BI \-outfile " name"
+Send output image to the named file, not to standard output.
 .TP
 .B \-verbose
 Enable debug printout.  More

@@ -41,7 +41,7 @@ Advanced features:
 	I/O suspension
 	Abbreviated datastreams and multiple images
 	Special markers
-	Downsampled image data
+	Raw (downsampled) image data
 	Progress monitoring
 	Memory management
 	Library compile-time options
@@ -147,10 +147,10 @@ Similarly, the rough outline of a JPEG decompression operation is:
 	Release the JPEG decompression object
 
 This is comparable to the compression outline except that reading the
-datastream header is a separate step.  By doing this, information about the
-image's size, colorspace, etc is available when the application selects
-decompression parameters.  For example, the application can choose an output
-scaling ratio that will fit the image into the available screen size.
+datastream header is a separate step.  This is helpful because information
+about the image's size, colorspace, etc is available when the application
+selects decompression parameters.  For example, the application can choose an
+output scaling ratio that will fit the image into the available screen size.
 
 The decompression library obtains compressed data by calling a data source
 manager, which typically will read the data from a file; but other behaviors
@@ -198,24 +198,24 @@ noise.  This is discussed in more detail in the JPEG FAQ and the other
 references mentioned in the README file.
 
 Pixels are stored by scanlines, with each scanline running from left to
-right.  If you are working with color data, then the component values for each
-pixel are adjacent in the row; for example, R,G,B,R,G,B,R,G,B,... for 24-bit
-RGB color.  Each scanline is an array of data type JSAMPLE --- which is
-generally "unsigned char", unless you've changed jmorecfg.h.  (You can also
-change the RGB pixel layout, say to B,G,R order, by modifying jmorecfg.h.
-But see the restrictions listed in that file before doing so.)
+right.  The component values for each pixel are adjacent in the row; for
+example, R,G,B,R,G,B,R,G,B,... for 24-bit RGB color.  Each scanline is an
+array of data type JSAMPLE --- which is typically "unsigned char", unless
+you've changed jmorecfg.h.  (You can also change the RGB pixel layout, say
+to B,G,R order, by modifying jmorecfg.h.  But see the restrictions listed in
+that file before doing so.)
 
 A 2-D array of pixels is formed by making a list of pointers to the starts of
-scanlines; the scanlines need not be adjacent in memory.  Even if you process
-just one scanline at a time, you must make a one-element pointer array to
-serve this purpose.  Pointers to JSAMPLE rows are of type JSAMPROW, and the
-pointer to the pointer array is of type JSAMPARRAY.
+scanlines; so the scanlines need not be physically adjacent in memory.  Even
+if you process just one scanline at a time, you must make a one-element
+pointer array to serve this purpose.  Pointers to JSAMPLE rows are of type
+JSAMPROW, and the pointer to the pointer array is of type JSAMPARRAY.
 
-The library accepts or supplies one or more complete scanlines per call;
-it is not possible to process part of a row at a time.  Scanlines are always
-processed top-to-bottom.  You can process an entire image in one call if
-you have it all in memory, but usually it's more convenient to process one
-scanline at a time.
+The library accepts or supplies one or more complete scanlines per call.
+It is not possible to process part of a row at a time.  Scanlines are always
+processed top-to-bottom.  You can process an entire image in one call if you
+have it all in memory, but usually it's simplest to process one scanline at
+a time.
 
 For best results, source data values should have the precision specified by
 BITS_IN_JSAMPLE (normally 8 bits).  For instance, if you choose to compress
@@ -248,13 +248,13 @@ doesn't control those directly).  This struct can be just a local variable in
 the calling routine, if a single routine is going to execute the whole JPEG
 compression sequence.  Otherwise it can be static or allocated from malloc().
 
-You will also need a structure representing a JPEG error handler.  The part of
-this that the library cares about is a "struct jpeg_error_mgr".  If you are
-providing your own error handler, you'll typically want to embed the
+You will also need a structure representing a JPEG error handler.  The part
+of this that the library cares about is a "struct jpeg_error_mgr".  If you
+are providing your own error handler, you'll typically want to embed the
 jpeg_error_mgr struct in a larger structure; this is discussed later under
 "Error handling".  For now we'll assume you are just using the default error
-handler.  The default error handler will print JPEG error/warning messages on
-stderr, and it will call exit() if a fatal error occurs.
+handler.  The default error handler will print JPEG error/warning messages
+on stderr, and it will call exit() if a fatal error occurs.
 
 You must initialize the error handler structure, store a pointer to it into
 the JPEG object's "err" field, and then call jpeg_create_compress() to
@@ -269,7 +269,8 @@ Typical code for this step, if you are using the default error handler, is
 	jpeg_create_compress(&cinfo);
 
 jpeg_create_compress allocates a small amount of memory, so it could fail
-if you are out of memory.  In that case it will exit via the error handler.
+if you are out of memory.  In that case it will exit via the error handler;
+that's why the error handler must be initialized first.
 
 
 2. Specify the destination for the compressed data (eg, a file).
@@ -317,15 +318,16 @@ fields in the JPEG object (cinfo structure):
 The image dimensions are, hopefully, obvious.  JPEG supports image dimensions
 of 1 to 64K pixels in either direction.  The input color space is typically
 RGB or grayscale, and input_components is 3 or 1 accordingly.  (See "Special
-color spaces", later, for more info.)  The in_color_space field should be
-assigned one of the enum constants JCS_RGB or JCS_GRAYSCALE.
+color spaces", later, for more info.)  The in_color_space field must be
+assigned one of the J_COLOR_SPACE enum constants, typically JCS_RGB or
+JCS_GRAYSCALE.
 
-JPEG has a large number of compression parameters that determine how the image
-is encoded.  Most applications don't need or want to know about all these
-parameters.  You can set all the parameters to reasonable defaults by calling
-jpeg_set_defaults(); then, if there are particular values you want to change,
-you can do so after that.  The "Compression parameter selection" section tells
-about all the parameters.
+JPEG has a large number of compression parameters that determine how the
+image is encoded.  Most applications don't need or want to know about all
+these parameters.  You can set all the parameters to reasonable defaults by
+calling jpeg_set_defaults(); then, if there are particular values you want
+to change, you can do so after that.  The "Compression parameter selection"
+section tells about all the parameters.
 
 You must set in_color_space correctly before calling jpeg_set_defaults(),
 because the defaults depend on the source image colorspace.  However the
@@ -358,7 +360,7 @@ Typical code:
 The "TRUE" parameter ensures that a complete JPEG interchange datastream
 will be written.  This is appropriate in most cases.  If you think you might
 want to use an abbreviated datastream, read the section on abbreviated
-datastreams, later.
+datastreams, below.
 
 Once you have called jpeg_start_compress(), you may not alter any JPEG
 parameters or other fields of the JPEG object until you have completed
@@ -561,7 +563,7 @@ More complex code is necessary if
   * A suspending data source is used --- in that case jpeg_read_header()
     may return before it has read all the header data.  See "I/O suspension",
     below.  The normal stdio source manager will NOT cause this to happen.
-  * Abbreviated JPEG files are to be processed.  See the section on
+  * Abbreviated JPEG files are to be processed --- see the section on
     abbreviated datastreams.  Standard applications that deal only in
     interchange JPEG files need not be concerned with this case either.
 
@@ -722,24 +724,25 @@ jpeglib.h indirectly includes the files jconfig.h and jmorecfg.h.  If you are
 installing the JPEG header files in a system directory, you will want to
 install all four files: jpeglib.h, jerror.h, jconfig.h, jmorecfg.h.
 
-(It may be worth pointing out that the core JPEG library does not actually
-require the stdio library: only the default source/destination managers and
-error handler need it.  You can use the library in a stdio-less environment
-if you replace those modules.  More info about the minimum system library
-requirements may be found in jinclude.h.)
-
 The most convenient way to include the JPEG code into your executable program
 is to prepare a library file ("libjpeg.a", or a corresponding name on non-Unix
 machines) and reference it at your link step.  If you use only half of the
 library (only compression or only decompression), only that much code will be
 included from the library, unless your linker is hopelessly brain-damaged.
-Most of the supplied makefiles build libjpeg.a automatically (see install.doc).
+The supplied makefiles build libjpeg.a automatically (see install.doc).
 
 On some systems your application may need to set up a signal handler to ensure
 that temporary files are deleted if the program is interrupted.  This is most
 critical if you are on MS-DOS and use the jmemdos.c memory manager back end;
 it will try to grab extended memory for temp files, and that space will NOT be
 freed automatically.  See cjpeg.c or djpeg.c for an example signal handler.
+
+It may be worth pointing out that the core JPEG library does not actually
+require the stdio library: only the default source/destination managers and
+error handler need it.  You can use the library in a stdio-less environment
+if you replace those modules and use jmemnobs.c (or another memory manager of
+your own devising).  More info about the minimum system library requirements
+may be found in jinclude.h.
 
 
 ADVANCED FEATURES
@@ -777,6 +780,12 @@ jpeg_set_colorspace (j_compress_ptr cinfo, J_COLOR_SPACE colorspace)
 	routine; if you want to twiddle individual parameters you should call
 	jpeg_set_colorspace() before rather than after.
 
+jpeg_default_colorspace (j_compress_ptr cinfo)
+	Selects an appropriate JPEG colorspace based on cinfo->in_color_space,
+	and calls jpeg_set_colorspace().  This is actually a subroutine of
+	jpeg_set_defaults().  It's broken out in case you want to change
+	just the colorspace-dependent JPEG parameters.
+
 jpeg_set_quality (j_compress_ptr cinfo, int quality, boolean force_baseline)
 	Constructs JPEG quantization tables appropriate for the indicated
 	quality setting.  The quality value is expressed on the 0..100 scale
@@ -805,8 +814,9 @@ jpeg_set_linear_quality (j_compress_ptr cinfo, int scale_factor,
 int jpeg_quality_scaling (int quality)
 	Converts a value on the IJG-recommended quality scale to a linear
 	scaling percentage.  Note that this routine may change or go away
-	in future releases --- IJG may choose to adopt a nonlinear scaling,
-	in which case the premise of this routine collapses.
+	in future releases --- IJG may choose to adopt a scaling method that
+	can't be expressed as a simple scalar multiplier, in which case the
+	premise of this routine collapses.  Caveat user.
 
 jpeg_add_quant_table (j_compress_ptr cinfo, int which_tbl,
 		      const unsigned int *basic_table,
@@ -833,7 +843,7 @@ boolean optimize_coding
 int smoothing_factor
 	If non-zero, the input image is smoothed; the value should be 1 for
 	minimal smoothing to 100 for maximum smoothing.  Consult jcsample.c
-	for details of the smoothing algorithm.
+	for details of the smoothing algorithm.  The default is zero.
 
 J_DCT_METHOD dct_method
 	Selects the algorithm used for the DCT step.  Choices are:
@@ -857,7 +867,7 @@ int restart_in_rows
 	Set restart_interval to specify the exact interval in MCU blocks.
 	Set restart_in_rows to specify the interval in MCU rows.  (If
 	restart_in_rows is not 0, then restart_interval is set after the
-	image width in MCUs is computed.)
+	image width in MCUs is computed.)  Defaults are zero (no restarts).
 
 J_COLOR_SPACE jpeg_color_space
 int num_components
@@ -940,8 +950,7 @@ int ac_tbl_no
 	0 for luminance components and 1 for chrominance components.
 
 int component_index
-	Must equal the component's index in comp_info[].  Don't mess
-	with this.
+	Must equal the component's index in comp_info[].
 
 
 Decompression parameter selection
@@ -984,11 +993,13 @@ returned image are:
 J_COLOR_SPACE out_color_space
 	Output color space.  jpeg_read_header() sets an appropriate default
 	based on jpeg_color_space; typically it will be RGB or grayscale.
-	The application can force this to grayscale to get grayscale output
-	from a color file.  Grayscale output is faster than full color since
-	the color components need not be processed.  (Note that not all
-	possible color space transforms are currently implemented; you may
-	need to extend jdcolor.c if you want an unusual conversion.)
+	The application can change this field to request output in a different
+	colorspace.  For example, set it to JCS_GRAYSCALE to get grayscale
+	output from a color file.  (This is useful for previewing: grayscale
+	output is faster than full color since the color components need not
+	be processed.)  Note that not all possible color space transforms are
+	currently implemented; you may need to extend jdcolor.c if you want an
+	unusual conversion.
 
 unsigned int scale_num, scale_denom
 	Scale the image by the fraction scale_num/scale_denom.  Default is
@@ -1018,12 +1029,12 @@ boolean two_pass_quantize
 J_DITHER_MODE dither_mode
 	Selects color dithering method.  Supported values are:
 		JDITHER_NONE	no dithering: fast, very low quality
-		JDITHER_ORDERED	simple ordered dither: moderate speed, quality
+		JDITHER_ORDERED	ordered dither: moderate speed and quality
 		JDITHER_FS	Floyd-Steinberg dither: slow, high quality
-	Default is JDITHER_FS.  [At present, ordered dither is implemented
+	Default is JDITHER_FS.  (At present, ordered dither is implemented
 	only in the single-pass, standard-colormap case.  If you ask for
 	ordered dither when two_pass_quantize is TRUE or when you supply
-	an external color map, you'll get F-S dithering.]
+	an external color map, you'll get F-S dithering.)
 
 When quantize_colors is TRUE, the target color map is described by the next
 two fields.  colormap is set to NULL by jpeg_read_header().  The application
@@ -1034,7 +1045,7 @@ selects a suitable color map and sets these two fields itself.
 only accepted for 3-component output color spaces.]
 
 JSAMPARRAY colormap
-	The color map represented as a 2-D pixel array of out_color_components
+	The color map, represented as a 2-D pixel array of out_color_components
 	rows and actual_number_of_colors columns.  Ignored if not quantizing.
 
 int actual_number_of_colors
@@ -1072,12 +1083,12 @@ index per pixel.  Otherwise it equals out_color_components.  The output arrays
 are required to be output_width * output_components JSAMPLEs wide.
 
 rec_outbuf_height is the recommended minimum height (in scanlines) of the
-buffer passed to jpeg_read_scanlines().  If the buffer is smaller, the library
-will still work, but time will be wasted due to unnecessary data copying.
-In high-quality modes, rec_outbuf_height is always 1, but some faster,
-lower-quality modes set it to larger values (typically 2 to 4).  If you are
-going to ask for a high-speed processing mode, you may as well go to the extra
-work of avoiding data copying...
+buffer passed to jpeg_read_scanlines().  If the buffer is smaller, the
+library will still work, but time will be wasted due to unnecessary data
+copying.  In high-quality modes, rec_outbuf_height is always 1, but some
+faster, lower-quality modes set it to larger values (typically 2 to 4).
+If you are going to ask for a high-speed processing mode, you may as well
+go to the trouble of honoring rec_outbuf_height so as to avoid data copying.
 
 
 Special color spaces
@@ -1134,7 +1145,7 @@ conforms to JFIF or Adobe conventions, but otherwise it is no better than a
 guess.  If you know the JPEG file's color space for certain, you can override
 jpeg_read_header's guess by setting jpeg_color_space.  jpeg_read_header also
 selects a default output color space based on (its guess of) jpeg_color_space;
-set out_color_space to override this.  Again you must select a supported
+set out_color_space to override this.  Again, you must select a supported
 transformation.  jdcolor.c currently supports
 	YCbCr => GRAYSCALE
 	YCbCr => RGB
@@ -1143,7 +1154,24 @@ as well as the null transforms.
 
 The two-pass color quantizer, jquant2.c, is specialized to handle RGB data
 (it weights distances appropriately for RGB colors).  You'll need to modify
-the code if you want to use it for non-RGB output color spaces.
+the code if you want to use it for non-RGB output color spaces.  Note that
+jquant2.c is used to map to an application-supplied colormap as well as for
+the normal two-pass colormap selection process.
+
+CAUTION: it appears that Adobe Photoshop writes inverted data in CMYK JPEG
+files: 0 represents 100% ink coverage, rather than 0% ink as you'd expect.
+This is arguably a bug in Photoshop, but if you need to work with Photoshop
+CMYK files, you will have to deal with it in your application.  We cannot
+"fix" this in the library by inverting the data during the CMYK<=>YCCK
+transform, because that would break other applications, notably Ghostscript.
+Photoshop versions prior to 3.0 write EPS files containing JPEG-encoded CMYK
+data in the same inverted-YCCK representation used in bare JPEG files, but
+the surrounding PostScript code performs an inversion using the PS image
+operator.  I am told that Photoshop 3.0 will write uninverted YCCK in
+EPS/JPEG files, and will omit the PS-level inversion.  (But the data
+polarity used in bare JPEG files will not change in 3.0.)  In either case,
+the JPEG library must not invert the data itself, or else Ghostscript would
+read these EPS files incorrectly.
 
 
 Error handling
@@ -1418,7 +1446,7 @@ suggest you "bite the bullet" and implement a real multi-tasking capability.
 
 To use I/O suspension, cooperation is needed between the calling application
 and the data source or destination manager; you will always need a custom
-source/destination manager.  (Please read the above section if you haven't
+source/destination manager.  (Please read the previous section if you haven't
 already.)  The basic idea is that the empty_output_buffer() or
 fill_input_buffer() routine is a no-op, merely returning FALSE to indicate
 that it has done nothing.  Upon seeing this, the JPEG library suspends
@@ -1428,13 +1456,13 @@ library again.
 
 Compression suspension:
 
-For compression suspension, use an empty_output_buffer() routine that returns
-FALSE; typically it will not do anything else.  This will cause the compressor
-to return to the caller of jpeg_write_scanlines(), with the return value
-indicating that not all the supplied scanlines have been accepted.  The
-application must make more room in the output buffer, adjust the pointer/count
-appropriately, and then call jpeg_write_scanlines() again, pointing to the
-first unconsumed scanline.
+For compression suspension, use an empty_output_buffer() routine that
+returns FALSE; typically it will not do anything else.  This will cause the
+compressor to return to the caller of jpeg_write_scanlines(), with the
+return value indicating that not all the supplied scanlines have been
+accepted.  The application must make more room in the output buffer, adjust
+the buffer pointer/count appropriately, and then call jpeg_write_scanlines()
+again, pointing to the first unconsumed scanline.
 
 When forced to suspend, the compressor will backtrack to a convenient stopping
 point (usually the start of the current MCU); it will regenerate some output
@@ -1472,10 +1500,10 @@ jpeg_finish_compress(), which would certainly trigger a buffer overrun.
 
 Decompression suspension:
 
-For decompression suspension, use a fill_input_buffer() routine that returns
-FALSE (except perhaps during error recovery, as discussed below).  This will
-cause the decompressor to return to its caller with an indication that
-suspension has occurred.  This can happen at three places:
+For decompression suspension, use a fill_input_buffer() routine that simply
+returns FALSE (except perhaps during error recovery, as discussed below).
+This will cause the decompressor to return to its caller with an indication
+that suspension has occurred.  This can happen at three places:
   * jpeg_read_header(): will return JPEG_SUSPENDED.
   * jpeg_read_scanlines(): will return the number of scanlines already
 	completed (possibly 0).
@@ -1511,8 +1539,8 @@ and insert dummy EOI markers just as a non-suspending data source manager
 would do.  This can be handled either in the surrounding application logic or
 within fill_input_buffer(); the latter is probably more efficient.  If
 fill_input_buffer() knows that no more data is available, it can set the
-pointer/count to point to a dummy EOI marker and then return TRUE just as if
-it had read more data in a non-suspending situation.
+pointer/count to point to a dummy EOI marker and then return TRUE just as
+though it had read more data in a non-suspending situation.
 
 The decompressor does not support suspension within jpeg_start_decompress().
 This means that you cannot use suspension with any multi-pass processing mode
@@ -1601,7 +1629,7 @@ normally would, but instead of calling jpeg_start_compress() and so on, call
 jpeg_write_tables(&cinfo).  This will write an abbreviated datastream
 containing only SOI, DQT and/or DHT markers, and EOI.  All the quantization
 and Huffman tables that are currently defined in the compression object will
-be emitted unless their sent_tables flag is already TRUE, and all the
+be emitted unless their sent_tables flag is already TRUE, and then all the
 sent_tables flags will be set TRUE.
 
 A sure-fire way to create matching tables-only and abbreviated image files
@@ -1712,14 +1740,14 @@ the selected colorspace is RGB, CMYK, or YCCK.  You can disable this, but
 we don't recommend it.  The decompression library will recognize JFIF and
 Adobe markers and will set the JPEG colorspace properly when one is found.
 
-You can write special markers immediately following the datastream header
-by calling jpeg_write_marker() after jpeg_start_compress() and before the
-first call to jpeg_write_scanlines().  When you do this, the markers appear
-after the SOI and the JFIF APP0 and Adobe APP14 markers (if written), but
-before all else.  Write the marker type parameter as "JPEG_COM" for COM or
-"JPEG_APP0 + n" for APPn.  (jpeg_write_marker will let you write any marker
-type, but we don't recommend writing any other kinds of marker.)  For
-example, to write a user comment string pointed to by comment_text:
+You can write special markers immediately following the datastream header by
+calling jpeg_write_marker() after jpeg_start_compress() and before the first
+call to jpeg_write_scanlines().  When you do this, the markers appear after
+the SOI and the JFIF APP0 and Adobe APP14 markers (if written), but before
+all else.  Write the marker type parameter as "JPEG_COM" for COM or
+"JPEG_APP0 + n" for APPn.  (Actually, jpeg_write_marker will let you write
+any marker type, but we don't recommend writing any other kinds of marker.)
+For example, to write a user comment string pointed to by comment_text:
 	jpeg_write_marker(cinfo, JPEG_COM, comment_text, strlen(comment_text));
 Or if you prefer to synthesize the marker byte sequence yourself, you can
 just cram it straight into the data destination module.
@@ -1751,8 +1779,8 @@ want to do that.
 A simple example of an external COM processor can be found in djpeg.c.
 
 
-Downsampled image data
-----------------------
+Raw (downsampled) image data
+----------------------------
 
 Some applications need to supply already-downsampled image data to the JPEG
 compressor, or to receive raw downsampled data from the decompressor.  The
@@ -1847,7 +1875,7 @@ will result if the data destination module tries to suspend.
 
 
 Decompression with raw data output implies bypassing all postprocessing:
-you cannot ask for color quantization, for example.  More seriously, you must
+you cannot ask for color quantization, for instance.  More seriously, you must
 deal with the color space and sampling factors present in the incoming file.
 If your application only handles, say, 2h1v YCbCr data, you must check for
 and fail on other color spaces or other sampling factors.
@@ -1888,7 +1916,7 @@ by the library.  No guarantees are made about how often this call will occur,
 so we don't recommend you use it for mouse tracking or anything like that.
 At present, a call will occur once per MCU row, scanline, or sample row
 group, whichever unit is convenient for the current processing mode; so the
-wider the image, the longer the interval between calls.  (During the data
+wider the image, the longer the time between calls.  (During the data
 transferring pass, only one call occurs per call of jpeg_read_scanlines or
 jpeg_write_scanlines, so don't pass a large number of scanlines at once if
 you want fine resolution in the progress count.)
@@ -1900,8 +1928,8 @@ whenever cinfo->progress is non-NULL.  (This pointer is set to NULL by
 jpeg_create_compress or jpeg_create_decompress; the library will not change
 it thereafter.  So if you allocate dynamic storage for the progress struct,
 make sure it will live as long as the JPEG object does.  Allocating from the
-JPEG memory manager with lifetime JPOOL_PERMANENT will work.)  You can use
-the same callback routine for both compression and decompression.
+JPEG memory manager with lifetime JPOOL_PERMANENT will work nicely.)  You
+can use the same callback routine for both compression and decompression.
 
 The jpeg_progress_mgr struct contains four fields which are set by the library:
 	long pass_counter;	/* work units completed in this pass */
@@ -2000,7 +2028,11 @@ a 12-bit DCT process.  12-bit lossy JPEG is supported if you define
 BITS_IN_JSAMPLE as 12 rather than 8.  Note that this causes JSAMPLE to be
 larger than a char, so it affects the surrounding application's image data.
 At present, a 12-bit library can handle *only* 12-bit images, not both
-precisions.
+precisions.  (If you need to include both 8- and 12-bit libraries in a
+single application, you could probably do it by defining
+NEED_SHORT_EXTERNAL_NAMES for just one of the copies.  You'd have to access
+the 8-bit and 12-bit copies from separate application source files.  This is
+untested ... if you try it, we'd like to hear whether it works!)
 
 The maximum number of components (color channels) in the image is determined
 by MAX_COMPONENTS.  The JPEG standard allows up to 255 components, but we
@@ -2075,14 +2107,14 @@ jmorecfg.h, and jinclude.h.
 Notes for MS-DOS implementors
 -----------------------------
 
-The IJG code is designed to be compiled in 80x86 "small" or "medium" memory
-models (i.e., data pointers are 16 bits unless explicitly declared "far";
-code pointers can be either size).  You may be able to use small model to
-compile cjpeg or djpeg by itself, but you will probably have to use medium
-model for any larger application.  This won't make much difference in
+The IJG code is designed to work efficiently in 80x86 "small" or "medium"
+memory models (i.e., data pointers are 16 bits unless explicitly declared
+"far"; code pointers can be either size).  You may be able to use small
+model to compile cjpeg or djpeg by itself, but you will probably have to use
+medium model for any larger application.  This won't make much difference in
 performance.  You *will* take a noticeable performance hit if you use a
-large-data memory model, and you should avoid "huge" model if at all
-possible.
+large-data memory model (perhaps 10%-25%), and you should avoid "huge" model
+if at all possible.
 
 The JPEG library typically needs 2Kb-3Kb of stack space.  It will also
 malloc about 20K-30K of near heap space while executing (and lots of far

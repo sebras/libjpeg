@@ -70,7 +70,6 @@ JMESSAGE(JWRN_GIF_NOMOREDATA, "Ran out of GIF bits")
 #endif /* GIF_SUPPORTED */
 
 #ifdef PPM_SUPPORTED
-JMESSAGE(JERR_PPM_SAMPLESIZE, "PPM code requires 8-bit JSAMPLEs")
 JMESSAGE(JERR_PPM_COLORSPACE, "PPM output must be grayscale or RGB")
 JMESSAGE(JERR_PPM_NONNUMERIC, "Nonnumeric data in PPM file")
 JMESSAGE(JERR_PPM_NOT, "Not a PPM file")
@@ -82,6 +81,10 @@ JMESSAGE(JTRC_PPM_TEXT, "%ux%u text PPM image")
 
 #ifdef RLE_SUPPORTED
 JMESSAGE(JERR_RLE_BADERROR, "Bogus error code from RLE library")
+JMESSAGE(JERR_RLE_COLORSPACE, "RLE output must be grayscale or RGB")
+JMESSAGE(JERR_RLE_DIMENSIONS, "Image dimensions (%ux%u) too large for RLE")
+JMESSAGE(JERR_RLE_EMPTY, "Empty RLE file")
+JMESSAGE(JERR_RLE_EOF, "Premature EOF in RLE header")
 JMESSAGE(JERR_RLE_MEM, "Insufficient memory for RLE header")
 JMESSAGE(JERR_RLE_NOT, "Not an RLE file")
 JMESSAGE(JERR_RLE_TOOMANYCHANNELS, "Cannot handle %d output channels for RLE")
@@ -89,6 +92,7 @@ JMESSAGE(JERR_RLE_UNSUPPORTED, "Cannot handle this RLE setup")
 JMESSAGE(JTRC_RLE, "%ux%u full-color RLE file")
 JMESSAGE(JTRC_RLE_FULLMAP, "%ux%u full-color RLE file with map of length %d")
 JMESSAGE(JTRC_RLE_GRAY, "%ux%u grayscale RLE file")
+JMESSAGE(JTRC_RLE_MAPGRAY, "%ux%u grayscale RLE file with map of length %d")
 JMESSAGE(JTRC_RLE_MAPPED, "%ux%u colormapped RLE file with map of length %d")
 #endif /* RLE_SUPPORTED */
 

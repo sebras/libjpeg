@@ -319,6 +319,18 @@ jpeg_set_defaults (j_compress_ptr cinfo)
   cinfo->Y_density = 1;
 
   /* Choose JPEG colorspace based on input space, set defaults accordingly */
+
+  jpeg_default_colorspace(cinfo);
+}
+
+
+/*
+ * Select an appropriate JPEG colorspace for in_color_space.
+ */
+
+GLOBAL void
+jpeg_default_colorspace (j_compress_ptr cinfo)
+{
   switch (cinfo->in_color_space) {
   case JCS_GRAYSCALE:
     jpeg_set_colorspace(cinfo, JCS_GRAYSCALE);

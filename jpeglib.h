@@ -738,6 +738,7 @@ typedef JMETHOD(boolean, jpeg_marker_parser_method, (j_decompress_ptr cinfo));
 #define jpeg_stdio_src		jStdSrc
 #define jpeg_set_defaults	jSetDefaults
 #define jpeg_set_colorspace	jSetColorspace
+#define jpeg_default_colorspace	jDefColorspace
 #define jpeg_set_quality	jSetQuality
 #define jpeg_set_linear_quality	jSetLQuality
 #define jpeg_add_quant_table	jAddQuantTable
@@ -786,6 +787,7 @@ EXTERN void jpeg_set_defaults JPP((j_compress_ptr cinfo));
 /* Compression parameter setup aids */
 EXTERN void jpeg_set_colorspace JPP((j_compress_ptr cinfo,
 				     J_COLOR_SPACE colorspace));
+EXTERN void jpeg_default_colorspace JPP((j_compress_ptr cinfo));
 EXTERN void jpeg_set_quality JPP((j_compress_ptr cinfo, int quality,
 				  boolean force_baseline));
 EXTERN void jpeg_set_linear_quality JPP((j_compress_ptr cinfo,

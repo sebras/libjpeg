@@ -19,6 +19,8 @@
 
 #undef RIGHT_SHIFT_IS_UNSIGNED
 
+#define ALIGN_TYPE  long	/* apparently double is a weird size? */
+
 #endif /* JPEG_INTERNALS */
 
 #ifdef JPEG_CJPEG_DJPEG

@@ -66,11 +66,11 @@
  * The outputs of the first pass are scaled up by PASS1_BITS bits so that
  * they are represented to better-than-integral precision.  These outputs
  * require BITS_IN_JSAMPLE + PASS1_BITS + 3 bits; this fits in a 16-bit word
- * with the recommended scaling.  (To scale up 12-bit sample data, an
- * intermediate INT32 array would be needed.)
+ * with the recommended scaling.  (For 12-bit sample data, the intermediate
+ * array is INT32 anyway.)
  *
  * To avoid overflow of the 32-bit intermediate results in pass 2, we must
- * have BITS_IN_JSAMPLE + CONST_BITS + PASS1_BITS <= 25.  Error analysis
+ * have BITS_IN_JSAMPLE + CONST_BITS + PASS1_BITS <= 26.  Error analysis
  * shows that the values given below are the most effective.
  */
 
@@ -79,7 +79,7 @@
 #define PASS1_BITS  2
 #else
 #define CONST_BITS  13
-#define PASS1_BITS  0		/* lose a little precision to avoid overflow */
+#define PASS1_BITS  1		/* lose a little precision to avoid overflow */
 #endif
 
 /* Some C compilers fail to reduce "FIX(constant)" at compile time, thus

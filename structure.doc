@@ -25,11 +25,11 @@ In this document, JPEG-specific terminology follows the JPEG standard:
 	determined by the sampling factors, or a single block in a
 	noninterleaved scan.
 We do not use the terms "pixel" and "sample" interchangeably.  When we say
-pixel, we mean an element of the full-size image; a sample is an element of
-the downsampled image.  Thus the number of samples may vary across components
-while the number of pixels does not.  (This terminology is not used rigorously
-throughout the code, but it is used in places where confusion would otherwise
-result.)
+pixel, we mean an element of the full-size image, while a sample is an element
+of the downsampled image.  Thus the number of samples may vary across
+components while the number of pixels does not.  (This terminology is not used
+rigorously throughout the code, but it is used in places where confusion would
+otherwise result.)
 
 
 *** System features ***
@@ -184,10 +184,11 @@ compression preprocessing to pad the source data properly.  Padding will occur
 only to the next block (8-sample) boundary.  In an interleaved-scan situation,
 additional dummy blocks may be used to fill out MCUs, but the MCU assembly and
 disassembly logic will create or discard these blocks internally.  (This is
-advantageous for speed reasons, since we avoid DCTing the dummy blocks; and it
-also permits a small reduction in file size.)  Applications that wish to deal
-directly with the downsampled data must provide similar buffering and padding
-for odd-sized images.
+advantageous for speed reasons, since we avoid DCTing the dummy blocks.
+It also permits a small reduction in file size, because the compressor can
+choose dummy block contents so as to minimize their size in compressed form.)
+Applications that wish to deal directly with the downsampled data must provide
+similar buffering and padding for odd-sized images.
 
 
 *** Poor man's object-oriented programming ***
@@ -249,11 +250,11 @@ methods, or the total shared interface behavior of a group of modules.
 *** Overall control structure ***
 
 We previously mentioned the need for overall control logic in the compression
-and decompression libraries.  In the previous IJG implementation, overall
+and decompression libraries.  In IJG implementations prior to v5, overall
 control was mostly provided by "pipeline control" modules, which proved to be
-large, unwieldy, and hard to understand.  In hopes of improving the situation,
-the control logic will be subdivided this time around.  The control modules
-will consist of:
+large, unwieldy, and hard to understand.  To improve the situation, the
+control logic has been subdivided into multiple modules.  The control modules
+consist of:
 
 1. Master control for module selection and initialization.  This has two
 responsibilities:
@@ -273,15 +274,15 @@ responsibilities:
    control code need only be concerned with decisions that affect more than
    one module.
  
-2. Data buffering control.  A separate control module will exist for each
-   inter-processing-step data buffer.  This module will be responsible for
+2. Data buffering control.  A separate control module exists for each
+   inter-processing-step data buffer.  This module is responsible for
    invoking the processing steps that write or read that data buffer.
 
 Each buffer controller sees the world as follows:
 
-  input data => processing step A => buffer => processing step B => output data
-                        |              |               |
-                ------------------ controller ------------------
+input data => processing step A => buffer => processing step B => output data
+                      |              |               |
+              ------------------ controller ------------------
 
 The controller knows the dataflow requirements of steps A and B: how much data
 they want to accept in one chunk and how much they output in one chunk.  Its
@@ -291,7 +292,7 @@ A data buffer control module may itself be viewed as a processing step by a
 higher-level control module; thus the control modules form a binary tree with
 elementary processing steps at the leaves of the tree.
 
-The control modules will be objects.  A considerable amount of flexibility can
+The control modules are objects.  A considerable amount of flexibility can
 be had by replacing implementations of a control module.  For example:
 * Merging of adjacent steps in the pipeline is done by replacing a control
   module and its pair of processing-step modules with a single processing-
@@ -348,14 +349,14 @@ The objects shown above are:
 * Downsampling: performs reduction of chroma components as required.
   Optionally may perform pixel-level smoothing as well.  Processes a "row
   group" at a time, where a row group is defined as Vmax pixel rows of each
-  component before downsampling, and Vk sample rows afterwards (Vk differs
-  across components).  Some downsampling or smoothing algorithms may require
-  context rows above and below the current row group; the preprocessing
-  controller is responsible for supplying these rows via proper buffering.
-  The downsampler is responsible for edge expansion at the right edge (i.e.,
-  extending each sample row to a multiple of 8 samples); but the preprocessing
-  controller is responsible for vertical edge expansion (i.e., duplicating the
-  bottom sample row as needed to make a multiple of 8 rows).
+  component before downsampling, and Vk sample rows afterwards (remember Vk
+  differs across components).  Some downsampling or smoothing algorithms may
+  require context rows above and below the current row group; the
+  preprocessing controller is responsible for supplying these rows via proper
+  buffering.  The downsampler is responsible for edge expansion at the right
+  edge (i.e., extending each sample row to a multiple of 8 samples); but the
+  preprocessing controller is responsible for vertical edge expansion (i.e.,
+  duplicating the bottom sample row as needed to make a multiple of 8 rows).
 
 * Coefficient controller: buffer controller for the DCT-coefficient data.
   This controller handles MCU assembly, including insertion of dummy DCT
@@ -436,7 +437,7 @@ shown are:
   file, this controller is responsible for buffering the full image.
   (Buffering DCT coefficients, rather than samples, is necessary to support
   progressive JPEG.)  The equivalent of one fully interleaved MCU row of
-  subsampled data is processed per call, even when the source JPEG file was
+  subsampled data is processed per call, even when the source JPEG file is
   noninterleaved.
 
 * Entropy decoding: Read coded data from the data source module and perform
@@ -510,7 +511,7 @@ monitor are candidates for replacement by a surrounding application.
 
 *** Data formats ***
 
-Arrays of pixel sample values will use the following data structure:
+Arrays of pixel sample values use the following data structure:
 
     typedef something JSAMPLE;		a pixel component value, 0..MAXJSAMPLE
     typedef JSAMPLE *JSAMPROW;		ptr to a row of samples
@@ -522,24 +523,24 @@ The basic element type JSAMPLE will typically be one of unsigned char,
 to be supported (this is a compile-time option).  Otherwise, unsigned char is
 used if possible.  If the compiler only supports signed chars, then it is
 necessary to mask off the value when reading.  Thus, all reads of JSAMPLE
-values should be coded as "GETJSAMPLE(value)", where the macro will be defined
+values must be coded as "GETJSAMPLE(value)", where the macro will be defined
 as "((value) & 0xFF)" on signed-char machines and "((int) (value))" elsewhere.
 
-With these conventions, JSAMPLE values can be assumed to be >= 0.  This should
+With these conventions, JSAMPLE values can be assumed to be >= 0.  This helps
 simplify correct rounding during downsampling, etc.  The JPEG standard's
-specification that sample values run from -128..127 will be accommodated by
+specification that sample values run from -128..127 is accommodated by
 subtracting 128 just as the sample value is copied into the source array for
 the DCT step (this will be an array of signed ints).  Similarly, during
 decompression the output of the IDCT step will be immediately shifted back to
 0..255.  (NB: different values are required when 12-bit samples are in use.
-The code should be written in terms of MAXJSAMPLE and CENTERJSAMPLE, which
-will be #defined as 255 and 128 respectively in an 8-bit implementation, and
-as 4095 and 2048 in a 12-bit implementation.)
+The code is written in terms of MAXJSAMPLE and CENTERJSAMPLE, which will be
+defined as 255 and 128 respectively in an 8-bit implementation, and as 4095
+and 2048 in a 12-bit implementation.)
 
 We use a pointer per row, rather than a two-dimensional JSAMPLE array.  This
 choice costs only a small amount of memory and has several benefits:
 * Code using the data structure doesn't need to know the allocated width of
-  the rows.  This will simplify edge expansion/compression, since we can work
+  the rows.  This simplifies edge expansion/compression, since we can work
   in an array that's wider than the logical picture width.
 * Indexing doesn't require multiplication; this is a performance win on many
   machines.
@@ -556,25 +557,25 @@ because they don't need to know how many components there are.  Furthermore,
 we can read or write each component to a temporary file independently, which
 is helpful when dealing with noninterleaved JPEG files.
 
-A specific sample value will be accessed by code such as
+In general, a specific sample value is accessed by code such as
 	GETJSAMPLE(image[colorcomponent][row][col])
 where col is measured from the image left edge, but row is measured from the
 first sample row currently in memory.  Either of the first two indexings can
 be precomputed by copying the relevant pointer.
 
 
-Since most image-processing applications prefer to work on images in which the
-components of a pixel are stored together, the data passed to or from the
-surrounding application will use the traditional convention: a single pixel is
+Since most image-processing applications prefer to work on images in which
+the components of a pixel are stored together, the data passed to or from the
+surrounding application uses the traditional convention: a single pixel is
 represented by N consecutive JSAMPLE values, and an image row is an array of
 (# of color components)*(image width) JSAMPLEs.  One or more rows of data can
-be represented by a pointer of type JSAMPARRAY in this scheme.  This scheme
-will be converted to component-wise storage inside the JPEG library.
-(Applications that want to skip JPEG preprocessing or postprocessing will have
-to contend with component-wise storage.)
+be represented by a pointer of type JSAMPARRAY in this scheme.  This scheme is
+converted to component-wise storage inside the JPEG library.  (Applications
+that want to skip JPEG preprocessing or postprocessing will have to contend
+with component-wise storage.)
 
 
-Arrays of frequency-coefficient values will use the following data structure:
+Arrays of DCT-coefficient values use the following data structure:
 
     typedef short JCOEF;		a 16-bit signed integer
     typedef JCOEF JBLOCK[DCTSIZE2];	an 8x8 block of coefficients
@@ -657,8 +658,8 @@ suspendable operation in these cases (when and if we implement them at all).
 The JPEG marker reader is designed to cope with suspension at an arbitrary
 point.  It does so by backing up to the start of the marker parameter segment,
 so the data buffer must be big enough to hold the largest marker of interest.
-Again, a couple K should be adequate.  (A special "skip" convention is used to
-bypass COM and APPn markers, so these can be larger than the buffer size
+Again, a couple KB should be adequate.  (A special "skip" convention is used
+to bypass COM and APPn markers, so these can be larger than the buffer size
 without causing problems; otherwise a 64K buffer would be needed in the worst
 case.)
 

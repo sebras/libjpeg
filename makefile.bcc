@@ -44,7 +44,8 @@ LIBSOURCES= jcapi.c jccoefct.c jccolor.c jcdctmgr.c jchuff.c jcmainct.c \
         jmemmgr.c jmemansi.c jmemname.c jmemnobs.c jmemdos.c
 # source files: cjpeg/djpeg applications, also rdjpgcom/wrjpgcom
 APPSOURCES= cjpeg.c djpeg.c rdcolmap.c rdppm.c wrppm.c rdgif.c wrgif.c \
-        rdtarga.c wrtarga.c rdbmp.c wrbmp.c rdjpgcom.c wrjpgcom.c
+        rdtarga.c wrtarga.c rdbmp.c wrbmp.c rdrle.c wrrle.c rdjpgcom.c \
+        wrjpgcom.c
 SOURCES= $(LIBSOURCES) $(APPSOURCES)
 # files included by source files
 INCLUDES= jdct.h jerror.h jinclude.h jmemsys.h jmorecfg.h jpegint.h \
@@ -76,8 +77,9 @@ DLIBOBJECTS= jdapi.obj jdatasrc.obj jdmaster.obj jdmarker.obj jdmainct.obj \
 # These objectfiles are included in libjpeg.lib
 LIBOBJECTS= $(CLIBOBJECTS) $(DLIBOBJECTS) $(COMOBJECTS)
 # object files for cjpeg and djpeg applications (excluding library files)
-COBJECTS= cjpeg.obj rdppm.obj rdgif.obj rdtarga.obj rdbmp.obj
-DOBJECTS= djpeg.obj wrppm.obj wrgif.obj wrtarga.obj wrbmp.obj rdcolmap.obj
+COBJECTS= cjpeg.obj rdppm.obj rdgif.obj rdtarga.obj rdrle.obj rdbmp.obj
+DOBJECTS= djpeg.obj wrppm.obj wrgif.obj wrtarga.obj wrrle.obj wrbmp.obj \
+        rdcolmap.obj
 
 # need linker response file because file list > 128 chars
 RFILE= libjpeg.ans
@@ -137,7 +139,7 @@ clean:
 
 test: cjpeg.exe djpeg.exe
 	del testout.*
-	djpeg -dct int -outfile testout.ppm  testorig.jpg
+	djpeg -dct int -ppm -outfile testout.ppm  testorig.jpg
 	djpeg -dct int -gif -outfile testout.gif  testorig.jpg
 	cjpeg -dct int -outfile testout.jpg  testimg.ppm
 	fc /b testimg.ppm testout.ppm
@@ -197,6 +199,8 @@ rdtarga.obj : rdtarga.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerro
 wrtarga.obj : wrtarga.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
 rdbmp.obj : rdbmp.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
 wrbmp.obj : wrbmp.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
+rdrle.obj : rdrle.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
+wrrle.obj : wrrle.c cdjpeg.h jinclude.h jconfig.h jpeglib.h jmorecfg.h jerror.h cderror.h
 rdjpgcom.obj : rdjpgcom.c jinclude.h jconfig.h
 wrjpgcom.obj : wrjpgcom.c jinclude.h jconfig.h
 jmemdosa.obj : jmemdosa.asm

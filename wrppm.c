@@ -20,24 +20,29 @@
 
 
 /*
- * Haven't yet got around to making this work with text-format output,
- * hence cannot handle pixels wider than 8 bits.
+ * Currently, this code only knows how to write raw PPM or PGM format,
+ * which can be no more than 8 bits/sample.  As an expedient for testing
+ * 12-bit JPEG mode, we support writing 12-bit data to an 8-bit file by
+ * downscaling the values.  Of course this implies loss of precision.
+ * (When the core library supports data precision reduction, a cleaner
+ * implementation will be to ask for that instead.)
  */
 
-#if BITS_IN_JSAMPLE != 8
-  Sorry, this code only copes with 8-bit JSAMPLEs. /* deliberate syntax err */
+#if BITS_IN_JSAMPLE == 8
+#define DOWNSCALE(x)  (x)
+#else
+#define DOWNSCALE(x)  ((x) >> (BITS_IN_JSAMPLE-8))
 #endif
 
+
 /*
- * In fact, it's worse than that: we want JSAMPLE to be a char, so that we
- * can just fwrite() the decompressed data to a raw-format PPM or PGM file.
- *
- * The output buffer needs to be writable by fwrite().  On PCs, we must
- * allocate the buffer in near data space, because we are assuming small-data
- * memory model, wherein fwrite() can't reach far memory.  If you need to
- * process very wide images on a PC, you might have to compile in large-memory
- * model, or else replace fwrite() with a putc() loop --- which will be much
- * slower.
+ * When JSAMPLE is the same size as char, we can just fwrite() the
+ * decompressed data to the PPM or PGM file.  On PCs, in order to make this
+ * work the output buffer must be allocated in near data space, because we are
+ * assuming small-data memory model wherein fwrite() can't reach far memory.
+ * If you need to process very wide images on a PC, you might have to compile
+ * in large-memory model, or else replace fwrite() with a putc() loop ---
+ * which will be much slower.
  */
 
 
@@ -46,8 +51,10 @@
 typedef struct {
   struct djpeg_dest_struct pub;	/* public fields */
 
-  JSAMPLE *iobuffer;		/* non-FAR pointer to I/O buffer */
-  JSAMPROW pixrow;		/* FAR pointer to same */
+  /* Usually these two pointers point to the same place: */
+  char *iobuffer;		/* fwrite's I/O buffer */
+  JSAMPROW pixrow;		/* decompressor output buffer */
+
   JDIMENSION buffer_width;	/* width of one row */
 } ppm_dest_struct;
 
@@ -57,6 +64,9 @@ typedef ppm_dest_struct * ppm_dest_ptr;
 /*
  * Write some pixel data.
  * In this module rows_supplied will always be 1.
+ *
+ * put_pixel_rows handles the "normal" 8-bit case where the decompressor
+ * output buffer is physically the same as the fwrite buffer.
  */
 
 METHODDEF void
@@ -65,6 +75,29 @@ put_pixel_rows (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo,
 {
   ppm_dest_ptr dest = (ppm_dest_ptr) dinfo;
 
+  (void) JFWRITE(dest->pub.output_file, dest->iobuffer, dest->buffer_width);
+}
+
+
+/*
+ * This code is used when we have to copy the data because JSAMPLE is not
+ * the same size as char.  Typically this only happens in 12-bit mode.
+ */
+
+METHODDEF void
+copy_pixel_rows (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo,
+		 JDIMENSION rows_supplied)
+{
+  ppm_dest_ptr dest = (ppm_dest_ptr) dinfo;
+  register char * bufferptr;
+  register JSAMPROW ptr;
+  register JDIMENSION col;
+
+  ptr = dest->pub.buffer[0];
+  bufferptr = dest->iobuffer;
+  for (col = dest->buffer_width; col > 0; col--) {
+    *bufferptr++ = (char) DOWNSCALE(GETJSAMPLE(*ptr++));
+  }
   (void) JFWRITE(dest->pub.output_file, dest->iobuffer, dest->buffer_width);
 }
 
@@ -88,12 +121,12 @@ put_demapped_rgb (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo,
   register JDIMENSION col;
 
   ptr = dest->pub.buffer[0];
-  bufferptr = (char *) dest->iobuffer;
+  bufferptr = dest->iobuffer;
   for (col = cinfo->output_width; col > 0; col--) {
     pixval = GETJSAMPLE(*ptr++);
-    *bufferptr++ = (char) GETJSAMPLE(color_map0[pixval]);
-    *bufferptr++ = (char) GETJSAMPLE(color_map1[pixval]);
-    *bufferptr++ = (char) GETJSAMPLE(color_map2[pixval]);
+    *bufferptr++ = (char) DOWNSCALE(GETJSAMPLE(color_map0[pixval]));
+    *bufferptr++ = (char) DOWNSCALE(GETJSAMPLE(color_map1[pixval]));
+    *bufferptr++ = (char) DOWNSCALE(GETJSAMPLE(color_map2[pixval]));
   }
   (void) JFWRITE(dest->pub.output_file, dest->iobuffer, dest->buffer_width);
 }
@@ -110,9 +143,9 @@ put_demapped_gray (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo,
   register JDIMENSION col;
 
   ptr = dest->pub.buffer[0];
-  bufferptr = (char *) dest->iobuffer;
+  bufferptr = dest->iobuffer;
   for (col = cinfo->output_width; col > 0; col--) {
-    *bufferptr++ = (char) GETJSAMPLE(color_map[GETJSAMPLE(*ptr++)]);
+    *bufferptr++ = (char) DOWNSCALE(GETJSAMPLE(color_map[GETJSAMPLE(*ptr++)]));
   }
   (void) JFWRITE(dest->pub.output_file, dest->iobuffer, dest->buffer_width);
 }
@@ -168,14 +201,6 @@ jinit_write_ppm (j_decompress_ptr cinfo)
 {
   ppm_dest_ptr dest;
 
-  /* This module does not work unless JSAMPLE is the same size as char.
-   * Unfortunately, we can't check it via "#if", because the preprocessor
-   * doesn't handle sizeof.
-   * You can ignore any compiler warning about "unreachable code" here.
-   */
-  if (SIZEOF(JSAMPLE) != SIZEOF(char))
-    ERREXIT(cinfo, JERR_PPM_SAMPLESIZE);
-
   /* Create module interface object, fill in method pointers */
   dest = (ppm_dest_ptr)
       (*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_IMAGE,
@@ -186,24 +211,29 @@ jinit_write_ppm (j_decompress_ptr cinfo)
   /* Calculate output image dimensions so we can allocate space */
   jpeg_calc_output_dimensions(cinfo);
 
-  /* Create I/O buffer.  Note we make this near on a PC. */
+  /* Create physical I/O buffer.  Note we make this near on a PC. */
   dest->buffer_width = cinfo->output_width * cinfo->out_color_components;
-  dest->iobuffer = (JSAMPLE *)
+  dest->iobuffer = (char *)
     (*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_IMAGE,
-			(size_t) (dest->buffer_width * SIZEOF(JSAMPLE)));
-  if (cinfo->quantize_colors) {
-    /* When quantizing, need an output buffer for colormap indexes
-     * that's separate from the physical I/O buffer.
+				(size_t) (dest->buffer_width * SIZEOF(char)));
+
+  if (cinfo->quantize_colors || SIZEOF(JSAMPLE) != SIZEOF(char)) {
+    /* When quantizing, we need an output buffer for colormap indexes
+     * that's separate from the physical I/O buffer.  We also need a
+     * separate buffer if JSAMPLE and char are not the same size.
      */
     dest->pub.buffer = (*cinfo->mem->alloc_sarray)
-      ((j_common_ptr) cinfo, JPOOL_IMAGE, cinfo->output_width, (JDIMENSION) 1);
+      ((j_common_ptr) cinfo, JPOOL_IMAGE,
+       cinfo->output_width * cinfo->output_components, (JDIMENSION) 1);
     dest->pub.buffer_height = 1;
-    if (cinfo->out_color_space == JCS_GRAYSCALE)
+    if (! cinfo->quantize_colors)
+      dest->pub.put_pixel_rows = copy_pixel_rows;
+    else if (cinfo->out_color_space == JCS_GRAYSCALE)
       dest->pub.put_pixel_rows = put_demapped_gray;
     else
       dest->pub.put_pixel_rows = put_demapped_rgb;
   } else {
-    /* Normal case, will fwrite() directly from decompressor output buffer. */
+    /* We will fwrite() directly from decompressor output buffer. */
     /* Synthesize a JSAMPARRAY pointer structure */
     /* Cast here implies near->far pointer conversion on PCs */
     dest->pixrow = (JSAMPROW) dest->iobuffer;

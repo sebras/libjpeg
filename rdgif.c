@@ -506,8 +506,9 @@ start_input_gif (j_compress_ptr cinfo, cjpeg_source_ptr sinfo)
   source->pub.buffer_height = 1;
 
   /* Return info about the image. */
-  cinfo->input_components = NUMCOLORS;
   cinfo->in_color_space = JCS_RGB;
+  cinfo->input_components = NUMCOLORS;
+  cinfo->data_precision = 8;
   cinfo->image_width = width;
   cinfo->image_height = height;
 

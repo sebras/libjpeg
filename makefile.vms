@@ -1,6 +1,6 @@
 $! Makefile for Independent JPEG Group's software
 $!
-$! This is a command procedure for use on VAX/VMS systems that do not have MMS.
+$! This is a command procedure for Digital VMS systems that do not have MMS.
 $! It builds the JPEG software by brute force, recompiling everything whether
 $! or not it is necessary.  It then runs the basic self-test.
 $! Thanks to Rick Dyson (dyson@iowasp.physics.uiowa.edu)
@@ -8,6 +8,13 @@ $! and Tim Bell (tbell@netcom.com) for their help.
 $!
 $! Read installation instructions before running this!!
 $!
+$ If F$GetSyi ("HW_MODEL") .gt. 1023 
+$   Then
+$       OPT = ""
+$   Else
+$       OPT = ",Sys$Disk:[]makvms.opt/Option"
+$ EndIf
+$ 
 $ DoCompile := CC /NoDebug /Optimize
 $!
 $ DoCompile jcapi.c
@@ -62,30 +69,32 @@ $ DoCompile cjpeg.c
 $ DoCompile rdppm.c
 $ DoCompile rdgif.c
 $ DoCompile rdtarga.c
+$ DoCompile rdrle.c
 $ DoCompile rdbmp.c
 $!
 $ Link /Executable = cjpeg.exe  cjpeg.obj,rdppm.obj,rdgif.obj,rdtarga.obj, -
-          rdbmp.obj,libjpeg.olb/Library,Sys$Disk:[]MAKVMS.OPT/Option
+          rdrle.obj,rdbmp.obj,libjpeg.olb/Library'OPT'
 $!
 $ DoCompile djpeg.c
 $ DoCompile wrppm.c
 $ DoCompile wrgif.c
 $ DoCompile wrtarga.c
+$ DoCompile wrrle.c
 $ DoCompile wrbmp.c
 $ DoCompile rdcolmap.c
 $!
 $ Link /Executable = djpeg.exe  djpeg.obj,wrppm.obj,wrgif.obj,wrtarga.obj, -
-          wrbmp.obj,rdcolmap.obj,libjpeg.olb/Library,Sys$Disk:[]MAKVMS.OPT/Option
+          wrrle.obj,wrbmp.obj,rdcolmap.obj,libjpeg.olb/Library'OPT'
 $!
 $ DoCompile rdjpgcom.c
-$ Link /Executable = rdjpgcom.exe  rdjpgcom.obj,Sys$Disk:[]MAKVMS.OPT/Option
+$ Link /Executable = rdjpgcom.exe  rdjpgcom.obj'OPT'
 $!
 $ DoCompile wrjpgcom.c
-$ Link /Executable = wrjpgcom.exe  wrjpgcom.obj,Sys$Disk:[]MAKVMS.OPT/Option
+$ Link /Executable = wrjpgcom.exe  wrjpgcom.obj'OPT'
 $!
 $! Run the self-test
 $!
-$ mcr sys$disk:[]djpeg -dct int      -outfile testout.ppm testorig.jpg
+$ mcr sys$disk:[]djpeg -dct int -ppm -outfile testout.ppm testorig.jpg
 $ mcr sys$disk:[]djpeg -dct int -gif -outfile testout.gif testorig.jpg
 $ mcr sys$disk:[]cjpeg -dct int      -outfile testout.jpg testimg.ppm
 $ Backup /Compare/Log testimg.ppm testout.ppm

@@ -215,7 +215,7 @@ out_of_memory (j_common_ptr cinfo, int which)
 /* If we compiled MEM_STATS support, report alloc requests before dying */
 {
 #ifdef MEM_STATS
-  cinfo->err->trace_level = 1;	/* force self_destruct to report stats */
+  cinfo->err->trace_level = 2;	/* force self_destruct to report stats */
 #endif
   ERREXIT1(cinfo, JERR_OUT_OF_MEMORY, which);
 }
@@ -885,7 +885,7 @@ free_pool (j_common_ptr cinfo, int pool_id)
     ERREXIT1(cinfo, JERR_BAD_POOL_ID, pool_id);	/* safety check */
 
 #ifdef MEM_STATS
-  if (cinfo->err->trace_level > 0)
+  if (cinfo->err->trace_level > 1)
     print_mem_stats(cinfo, pool_id); /* print pool's memory usage statistics */
 #endif
 

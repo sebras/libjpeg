@@ -230,6 +230,7 @@ usage (void)
   fprintf(stderr, "  -onepass       Use 1-pass quantization (fast, low quality)\n");
 #endif
   fprintf(stderr, "  -maxmemory N   Maximum memory to use (in kbytes)\n");
+  fprintf(stderr, "  -outfile name  Specify name for output file\n");
   fprintf(stderr, "  -verbose  or  -debug   Emit debug output\n");
   exit(EXIT_FAILURE);
 }
@@ -261,9 +262,9 @@ keymatch (char * arg, const char * keyword, int minchars)
 
 
 LOCAL int
-parse_switches (j_decompress_ptr cinfo, int last_file_arg_seen,
-		int argc, char **argv, boolean for_real)
-/* Initialize cinfo with default switch settings, then parse option switches.
+parse_switches (j_decompress_ptr cinfo, int argc, char **argv,
+		int last_file_arg_seen, boolean for_real)
+/* Parse optional switches.
  * Returns argv[] index of first file-name argument (== argc if none).
  * Any file names with indexes <= last_file_arg_seen are ignored;
  * they have presumably been processed in a previous iteration.
@@ -410,7 +411,7 @@ parse_switches (j_decompress_ptr cinfo, int last_file_arg_seen,
       /* BMP output format (OS/2 flavor). */
       requested_fmt = FMT_OS2;
 
-    } else if (keymatch(arg, "outfile", 3)) {
+    } else if (keymatch(arg, "outfile", 4)) {
       /* Set output file name. */
       if (++argn >= argc)	/* advance to next argument */
 	usage();
@@ -567,7 +568,7 @@ main (int argc, char **argv)
    * found during jpeg_read_header...)
    */
 
-  file_index = parse_switches(&cinfo, 0, argc, argv, FALSE);
+  file_index = parse_switches(&cinfo, argc, argv, 0, FALSE);
 
 #ifdef TWO_FILE_COMMANDLINE
   /* Must have either -outfile switch or explicit output file name */
@@ -653,7 +654,7 @@ main (int argc, char **argv)
   (void) jpeg_read_header(&cinfo, TRUE);
 
   /* Adjust default decompression parameters by re-parsing the options */
-  file_index = parse_switches(&cinfo, 0, argc, argv, TRUE);
+  file_index = parse_switches(&cinfo, argc, argv, 0, TRUE);
 
   /* Initialize the output module now to let it override any crucial
    * option settings (for instance, GIF wants to force color quantization).

@@ -134,6 +134,7 @@ Image file reader modules for cjpeg:
 rdbmp.c		BMP file input.
 rdgif.c		GIF file input.
 rdppm.c		PPM/PGM file input.
+rdrle.c		Utah RLE file input.
 rdtarga.c	Targa file input.
 
 Image file writer modules for djpeg:
@@ -141,6 +142,7 @@ Image file writer modules for djpeg:
 wrbmp.c		BMP file output.
 wrgif.c		GIF file output.
 wrppm.c		PPM/PGM file output.
+wrrle.c		Utah RLE file output.
 wrtarga.c	Targa file output.
 
 
@@ -153,7 +155,7 @@ rdjpgcom.c	Stand-alone rdjpgcom application.
 wrjpgcom.c	Stand-alone wrjpgcom application.
 
 These programs do not depend on the IJG library.  They do use
-jconfig.h and jinclude.h, to improve portability.
+jconfig.h and jinclude.h, simply to improve portability.
 
 
 ADDITIONAL FILES

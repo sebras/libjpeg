@@ -1,4 +1,4 @@
-/* jconfig.vms --- jconfig.h for use on VAX VMS. */
+/* jconfig.vms --- jconfig.h for use on Digital VMS. */
 /* see jconfig.doc for explanations */
 
 #define HAVE_PROTOTYPES

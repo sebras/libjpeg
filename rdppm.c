@@ -257,6 +257,7 @@ start_input_ppm (j_compress_ptr cinfo, cjpeg_source_ptr sinfo)
   if (w <= 0 || h <= 0 || maxval <= 0) /* error check */
     ERREXIT(cinfo, JERR_PPM_NOT);
 
+  cinfo->data_precision = BITS_IN_JSAMPLE; /* we always rescale data to this */
   cinfo->image_width = (JDIMENSION) w;
   cinfo->image_height = (JDIMENSION) h;
 

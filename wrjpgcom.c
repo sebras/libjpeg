@@ -355,8 +355,10 @@ usage (void)
   fprintf(stderr, "Switches (names may be abbreviated):\n");
   fprintf(stderr, "  -replace         Delete any existing comments\n");
   fprintf(stderr, "  -comment \"text\"  Insert comment with given text\n");
-  fprintf(stderr, "Note that you must put quotes around the comment string.\n");
-  fprintf(stderr, "If you do not give the -comment \"text\" switch on the command line,\n");
+  fprintf(stderr, "  -cfile name      Read comment from named file\n");
+  fprintf(stderr, "Notice that you must put quotes around the comment text\n");
+  fprintf(stderr, "when you use -comment.\n");
+  fprintf(stderr, "If you do not give either -comment or -cfile on the command line,\n");
   fprintf(stderr, "then the comment text is read from standard input.\n");
   fprintf(stderr, "It can be multiple lines, up to %u characters total.\n",
 	  (unsigned int) MAX_COM_LENGTH);
@@ -405,6 +407,7 @@ main (int argc, char **argv)
   char * arg;
   int keep_COM = 1;
   char * comment_arg = NULL;
+  FILE * comment_file = NULL;
   unsigned int comment_length = 0;
   int marker;
 
@@ -425,6 +428,12 @@ main (int argc, char **argv)
     arg++;			/* advance over '-' */
     if (keymatch(arg, "replace", 1)) {
       keep_COM = 0;
+    } else if (keymatch(arg, "cfile", 2)) {
+      if (++argn >= argc) usage();
+      if ((comment_file = fopen(argv[argn], "r")) == NULL) {
+	fprintf(stderr, "%s: can't open %s\n", progname, argv[argn]);
+	exit(EXIT_FAILURE);
+      }
     } else if (keymatch(arg, "comment", 1)) {
       if (++argn >= argc) usage();
       comment_arg = argv[argn];
@@ -453,10 +462,13 @@ main (int argc, char **argv)
       usage();
   }
 
-  /* If there is no -comment switch, we will read the comment text
+  /* Cannot use both -comment and -cfile. */
+  if (comment_arg != NULL && comment_file != NULL)
+    usage();
+  /* If there is neither -comment nor -cfile, we will read the comment text
    * from stdin; in this case there MUST be an input JPEG file name.
    */
-  if (comment_arg == NULL && argn >= argc)
+  if (comment_arg == NULL && comment_file == NULL && argn >= argc)
     usage();
 
   /* Open the input file. */
@@ -512,15 +524,17 @@ main (int argc, char **argv)
 #endif
 #endif /* TWO_FILE_COMMANDLINE */
 
-  /* Collect comment text from stdin, if necessary */
+  /* Collect comment text from comment_file or stdin, if necessary */
   if (comment_arg == NULL) {
+    FILE * src_file;
     int c;
 
     comment_arg = (char *) malloc((size_t) MAX_COM_LENGTH);
     if (comment_arg == NULL)
       ERREXIT("Insufficient memory");
     comment_length = 0;
-    while ((c = getc(stdin)) != EOF) {
+    src_file = (comment_file != NULL ? comment_file : stdin);
+    while ((c = getc(src_file)) != EOF) {
       if (comment_length >= (unsigned int) MAX_COM_LENGTH) {
 	fprintf(stderr, "Comment text may not exceed %u bytes\n",
 		(unsigned int) MAX_COM_LENGTH);
@@ -528,6 +542,8 @@ main (int argc, char **argv)
       }
       comment_arg[comment_length++] = (char) c;
     }
+    if (comment_file != NULL)
+      fclose(comment_file);
   }
 
   /* Copy JPEG headers until SOFn marker;
