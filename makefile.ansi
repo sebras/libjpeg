@@ -1,7 +1,7 @@
 # Makefile for Independent JPEG Group's software
 
-# This makefile is for Amiga systems using Manx Aztec C ver 5.x.
-# Thanks to D.J. James for this version.
+# This makefile is suitable for Unix-like systems with ANSI-capable compilers.
+# If you have a non-ANSI compiler, makefile.unix is a better starting point.
 
 # Read SETUP instructions before saying "make" !!
 
@@ -9,21 +9,27 @@
 CC= cc
 
 # You may need to adjust these cc options:
-CFLAGS= -MC -MD -DTWO_FILE_COMMANDLINE
+CFLAGS= -O
+# In particular:
+#   Add -DBSD if on a pure BSD system (see jinclude.h).
+#   Add -DMEM_STATS to enable gathering of memory usage statistics.
+#   You may also want to add -DTWO_FILE_COMMANDLINE or -D switches for other
+#   symbols listed in jconfig.h, if you prefer not to change jconfig.h.
 
 # Link-time cc options:
 LDFLAGS= 
 
 # To link any special libraries, add the necessary -l commands here.
-LDLIBS= -lml -lcl
+# In particular, on some versions of HP-UX (and probably other SysV-derived
+# systems) there is a faster alternate malloc(3) library that you can use
+# by adding "-lmalloc" to this line.
+LDLIBS= 
 
 # miscellaneous OS-dependent stuff
-# linker
-LN= ln
-# file deletion command
-RM= delete quiet
-# library (.lib) file creation command
-AR= lb
+LN= $(CC)	# linker
+RM= rm -f	# file deletion command
+AR= ar rc	# library (.a) file creation command
+AR2= ranlib	# second step in .a creation (use "touch" if not needed)
 
 
 # source files (independently compilable files)
@@ -57,13 +63,13 @@ DLIBOBJECTS= jdmaster.o jddeflts.o jbsmooth.o jdarith.o jdcolor.o jdhuff.o \
         jdmcu.o jdpipe.o jdsample.o jquant1.o jquant2.o jrevdct.o jrdjfif.o \
         jwrgif.o jwrppm.o jwrrle.o jwrtarga.o
 DOBJECTS= jdmain.o $(DLIBOBJECTS) $(COMOBJECTS)
-# These objectfiles are included in libjpeg.lib
+# These objectfiles are included in libjpeg.a
 LIBOBJECTS= $(CLIBOBJECTS) $(DLIBOBJECTS) $(COMOBJECTS)
 
 
 all: cjpeg djpeg
-# By default, libjpeg.lib is not built unless you explicitly request it.
-# You can add libjpeg.lib to the line above if you want it built by default.
+# By default, libjpeg.a is not built unless you explicitly request it.
+# You can add libjpeg.a to the line above if you want it built by default.
 
 
 cjpeg: $(COBJECTS)
@@ -72,24 +78,25 @@ cjpeg: $(COBJECTS)
 djpeg: $(DOBJECTS)
 	$(LN) $(LDFLAGS) -o djpeg $(DOBJECTS) $(LDLIBS)
 
-# libjpeg.lib is useful if you are including the JPEG software in a larger
+# libjpeg.a is useful if you are including the JPEG software in a larger
 # program; you'd include it in your link, rather than the individual modules.
-libjpeg.lib: $(LIBOBJECTS)
-	-$(RM) libjpeg.lib
-	$(AR) libjpeg.lib  $(LIBOBJECTS)
+libjpeg.a: $(LIBOBJECTS)
+	$(RM) libjpeg.a
+	$(AR) libjpeg.a  $(LIBOBJECTS)
+	$(AR2) libjpeg.a
 
 clean:
-	-$(RM) *.o cjpeg djpeg libjpeg.lib core testout.ppm testout.jpg
+	$(RM) *.o cjpeg djpeg libjpeg.a core testout.ppm testout.jpg
 
 distribute:
-	-$(RM) jpegsrc.tar*
+	$(RM) jpegsrc.tar*
 	tar cvf jpegsrc.tar $(DISTFILES)
 	compress -v jpegsrc.tar
 
 test: cjpeg djpeg
-	-$(RM) testout.ppm testout.jpg
-	djpeg testorig.jpg testout.ppm
-	cjpeg testimg.ppm testout.jpg
+	$(RM) testout.ppm testout.jpg
+	./djpeg testorig.jpg >testout.ppm
+	./cjpeg testimg.ppm >testout.jpg
 	cmp testimg.ppm testout.ppm
 	cmp testimg.jpg testout.jpg
 

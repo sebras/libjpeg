@@ -1,29 +1,21 @@
 # Makefile for Independent JPEG Group's software
 
-# This makefile is for Amiga systems using Manx Aztec C ver 5.x.
-# Thanks to D.J. James for this version.
+# This makefile is suitable for Borland C (Turbo C) on MS-DOS.
+# It is set up for Borland C++ revision 2.0; if you have an older
+# version of Turbo C, you need to say "CC= tc" below.
+# Thanks to Tom Wright for this version.
 
 # Read SETUP instructions before saying "make" !!
 
 # The name of your C compiler:
-CC= cc
+CC= bcc
 
 # You may need to adjust these cc options:
-CFLAGS= -MC -MD -DTWO_FILE_COMMANDLINE
+CFLAGS= -c -ml -DINCOMPLETE_TYPES_BROKEN
+# -DINCOMPLETE_TYPES_BROKEN suppresses warnings about undefined structures
 
 # Link-time cc options:
-LDFLAGS= 
-
-# To link any special libraries, add the necessary -l commands here.
-LDLIBS= -lml -lcl
-
-# miscellaneous OS-dependent stuff
-# linker
-LN= ln
-# file deletion command
-RM= delete quiet
-# library (.lib) file creation command
-AR= lb
+LDFLAGS= -ml
 
 
 # source files (independently compilable files)
@@ -46,52 +38,40 @@ TESTFILES= testorig.jpg testimg.ppm testimg.jpg
 DISTFILES= $(DOCS) $(MAKEFILES) $(SOURCES) $(INCLUDES) $(OTHERFILES) \
         $(TESTFILES)
 # objectfiles common to cjpeg and djpeg
-COMOBJECTS= jutils.o jvirtmem.o jerror.o
+COMOBJECTS= jutils.obj jvirtmem.obj jerror.obj
 # compression objectfiles
-CLIBOBJECTS= jcmaster.o jcdeflts.o jcarith.o jccolor.o jcexpand.o jchuff.o \
-        jcmcu.o jcpipe.o jcsample.o jfwddct.o jwrjfif.o jrdgif.o jrdppm.o \
-        jrdrle.o jrdtarga.o
-COBJECTS= jcmain.o $(CLIBOBJECTS) $(COMOBJECTS)
+CLIBOBJECTS= jcmaster.obj jcdeflts.obj jcarith.obj jccolor.obj jcexpand.obj \
+        jchuff.obj jcmcu.obj jcpipe.obj jcsample.obj jfwddct.obj \
+        jwrjfif.obj jrdgif.obj jrdppm.obj jrdrle.obj jrdtarga.obj
+COBJECTS= jcmain.obj $(CLIBOBJECTS) $(COMOBJECTS)
 # decompression objectfiles
-DLIBOBJECTS= jdmaster.o jddeflts.o jbsmooth.o jdarith.o jdcolor.o jdhuff.o \
-        jdmcu.o jdpipe.o jdsample.o jquant1.o jquant2.o jrevdct.o jrdjfif.o \
-        jwrgif.o jwrppm.o jwrrle.o jwrtarga.o
-DOBJECTS= jdmain.o $(DLIBOBJECTS) $(COMOBJECTS)
+DLIBOBJECTS= jdmaster.obj jddeflts.obj jbsmooth.obj jdarith.obj jdcolor.obj \
+        jdhuff.obj jdmcu.obj jdpipe.obj jdsample.obj jquant1.obj \
+        jquant2.obj jrevdct.obj jrdjfif.obj jwrgif.obj jwrppm.obj \
+        jwrrle.obj jwrtarga.obj
+DOBJECTS= jdmain.obj $(DLIBOBJECTS) $(COMOBJECTS)
 # These objectfiles are included in libjpeg.lib
 LIBOBJECTS= $(CLIBOBJECTS) $(DLIBOBJECTS) $(COMOBJECTS)
 
 
-all: cjpeg djpeg
-# By default, libjpeg.lib is not built unless you explicitly request it.
-# You can add libjpeg.lib to the line above if you want it built by default.
+all: cjpeg.exe djpeg.exe
 
 
-cjpeg: $(COBJECTS)
-	$(LN) $(LDFLAGS) -o cjpeg $(COBJECTS) $(LDLIBS)
+cjpeg.exe: $(COBJECTS)
+	$(CC) $(LDFLAGS) -ecjpeg.exe @makcjpeg.lst
 
-djpeg: $(DOBJECTS)
-	$(LN) $(LDFLAGS) -o djpeg $(DOBJECTS) $(LDLIBS)
+djpeg.exe: $(DOBJECTS)
+	$(CC) $(LDFLAGS) -edjpeg.exe @makdjpeg.lst
 
-# libjpeg.lib is useful if you are including the JPEG software in a larger
-# program; you'd include it in your link, rather than the individual modules.
-libjpeg.lib: $(LIBOBJECTS)
-	-$(RM) libjpeg.lib
-	$(AR) libjpeg.lib  $(LIBOBJECTS)
+.c.obj:
+	$(CC) $(CFLAGS) $<
 
-clean:
-	-$(RM) *.o cjpeg djpeg libjpeg.lib core testout.ppm testout.jpg
-
-distribute:
-	-$(RM) jpegsrc.tar*
-	tar cvf jpegsrc.tar $(DISTFILES)
-	compress -v jpegsrc.tar
-
-test: cjpeg djpeg
-	-$(RM) testout.ppm testout.jpg
+test:
+	del testout.*
 	djpeg testorig.jpg testout.ppm
 	cjpeg testimg.ppm testout.jpg
-	cmp testimg.ppm testout.ppm
-	cmp testimg.jpg testout.jpg
+	fc testimg.ppm testout.ppm
+	fc testimg.jpg testout.jpg
 
 
 jbsmooth.o : jbsmooth.c jinclude.h jconfig.h jpegdata.h 

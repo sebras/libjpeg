@@ -21,7 +21,7 @@
  */
 
 #include "jinclude.h"
-#ifdef __STDC__
+#ifdef INCLUDES_ARE_ANSI
 #include <stdlib.h>		/* to declare exit() */
 #endif
 
@@ -37,27 +37,39 @@
 #define WRITE_BINARY	"wb"
 #endif
 
+#include "jversion.h"		/* for version message */
+
 
 /*
- * If your system has getopt(3), you can use your library version by
- * defining HAVE_GETOPT.  By default, we use the PD 'egetopt'.
+ * PD version of getopt(3).
  */
 
-#ifdef HAVE_GETOPT
-extern int getopt PP((int argc, char **argv, char *optstring));
-extern char * optarg;
-extern int optind;
-#else
 #include "egetopt.c"
-#define getopt(argc,argv,opt)	egetopt(argc,argv,opt)
-#endif
 
 
-typedef enum {			/* defines known output image formats */
-	FMT_PPM,		/* PPM/PGM (PBMPLUS formats) */
+/*
+ * This list defines the known output image formats
+ * (not all of which need be supported by a given version).
+ * You can change the default output format by defining DEFAULT_FMT;
+ * indeed, you had better do so if you undefine PPM_SUPPORTED.
+ */
+
+typedef enum {
 	FMT_GIF,		/* GIF format */
+	FMT_PPM,		/* PPM/PGM (PBMPLUS formats) */
+	FMT_RLE,		/* RLE format */
+	FMT_TARGA,		/* Targa format */
 	FMT_TIFF		/* TIFF format */
 } IMAGE_FORMATS;
+
+#ifndef DEFAULT_FMT		/* so can override from CFLAGS in Makefile */
+#define DEFAULT_FMT	FMT_PPM
+#endif
+
+#ifdef MSDOS
+#define DEFAULT_FMT_EXT "tga"
+#define JPEG_EXT        "jpg"
+#endif
 
 static IMAGE_FORMATS requested_fmt;
 
@@ -93,6 +105,16 @@ d_ui_method_selection (decompress_info_ptr cinfo)
     jselwppm(cinfo);
     break;
 #endif
+#ifdef RLE_SUPPORTED
+  case FMT_RLE:
+    jselwrle(cinfo);
+    break;
+#endif
+#ifdef TARGA_SUPPORTED
+  case FMT_TARGA:
+    jselwtarga(cinfo);
+    break;
+#endif
   default:
     ERREXIT(cinfo->emethods, "Unsupported output file format");
     break;
@@ -100,45 +122,58 @@ d_ui_method_selection (decompress_info_ptr cinfo)
 }
 
 
-/*
- * Reload the input buffer after it's been emptied, and return the next byte.
- * See the JGETC macro for calling conditions.
- *
- * This routine would need to be replaced if reading JPEG data from something
- * other than a stdio stream.
- */
-
-METHODDEF int
-read_jpeg_data (decompress_info_ptr cinfo)
-{
-  cinfo->bytes_in_buffer = fread(cinfo->input_buffer + MIN_UNGET,
-				 1, JPEG_BUF_SIZE,
-				 cinfo->input_file);
-  
-  cinfo->next_input_byte = cinfo->input_buffer + MIN_UNGET;
-  
-  if (cinfo->bytes_in_buffer <= 0)
-    ERREXIT(cinfo->emethods, "Unexpected EOF in JPEG file");
-
-  return JGETC(cinfo);
-}
-
-
-
 LOCAL void
 usage (char * progname)
 /* complain about bad command line */
 {
   fprintf(stderr, "usage: %s ", progname);
-  fprintf(stderr, "[-b] [-q colors] [-2] [-d] [-g] [-G]");
+  fprintf(stderr, "[-G] [-P] [-R] [-T] [-b] [-g] [-q colors] [-2] [-D] [-d]");
 #ifdef TWO_FILE_COMMANDLINE
+#	ifdef MSDOS
+  fprintf(stderr, " inputfile [outputfile]\n");
+#	else
   fprintf(stderr, " inputfile outputfile\n");
+#	endif
 #else
   fprintf(stderr, " [inputfile]\n");
 #endif
   exit(2);
 }
 
+#ifdef MSDOS
+
+/*
+ * Compose a filename given a base name and extension.  If file had
+ * and extension, throw it away.  We must scan the filename from the
+ * right looking for a '.', but stopping if we encounter a path
+ * separator character (just in case we are handled a long pathname
+ * in which one of the directories has a '.', but the file doesn't).
+ */
+
+LOCAL void
+fix_msdos_filename (char *dest, char *src, char *ext)
+{
+  int i, l;
+  char *dotp;
+
+  strcpy(dest, src);
+  l = strlen(dest);
+  dotp = dest + l; /* Assume there is no extension */
+
+  for (i = --l; i >= 0; --i) {
+    if (dest[i] == '.') {
+      dotp = dest + i;
+      break;
+    } else if ( dest[i] == '/' || dest[i] == '\\' ||
+                dest[i] == ':') {
+      break;
+    }
+  }
+  *dotp++ = '.';
+  strcpy(dotp, ext);
+}
+
+#endif /* MSDOS */
 
 /*
  * The main program.
@@ -147,6 +182,9 @@ usage (char * progname)
 GLOBAL void
 main (int argc, char **argv)
 {
+#ifdef MSDOS
+  char infname[FILENAME_MAX], outfname[FILENAME_MAX];
+#endif
   struct decompress_info_struct cinfo;
   struct decompress_methods_struct dc_methods;
   struct external_methods_struct e_methods;
@@ -163,44 +201,35 @@ main (int argc, char **argv)
   jselerror(&e_methods);	/* error/trace message routines */
   jselvirtmem(&e_methods);	/* memory allocation routines */
   dc_methods.d_ui_method_selection = d_ui_method_selection;
-  dc_methods.read_jpeg_data = read_jpeg_data;
 
-  /* Allocate memory for input buffer. */
-  cinfo.input_buffer = (char *) (*cinfo.emethods->alloc_small)
-					((size_t) (JPEG_BUF_SIZE + MIN_UNGET));
-  cinfo.bytes_in_buffer = 0;	/* initialize buffer to empty */
+  /* Set up default JPEG parameters. */
+  j_d_defaults(&cinfo, TRUE);
+  requested_fmt = DEFAULT_FMT;	/* set default output file format */
 
-  /* Set up default input and output file references. */
-  /* (These may be overridden below.) */
-  cinfo.input_file = stdin;
-  cinfo.output_file = stdout;
-
-  /* Set up default parameters. */
-  e_methods.trace_level = 0;
-  cinfo.output_gamma = 1.0;
-  cinfo.quantize_colors = FALSE;
-  cinfo.two_pass_quantize = FALSE;
-  cinfo.use_dithering = FALSE;
-  cinfo.desired_number_of_colors = 256;
-  cinfo.do_block_smoothing = FALSE;
-  cinfo.do_pixel_smoothing = FALSE;
-  cinfo.out_color_space = CS_RGB;
-  cinfo.jpeg_color_space = CS_UNKNOWN;
-  /* setting any other value in jpeg_color_space overrides heuristics */
-  /* in jrdjfif.c ... */
-  /* You may wanta change the default output format; here's the place: */
-#ifdef PPM_SUPPORTED
-  requested_fmt = FMT_PPM;
-#else
-  requested_fmt = FMT_GIF;
-#endif
-
-  /* Scan parameters */
+  /* Scan command line options, adjust parameters */
   
-  while ((c = getopt(argc, argv, "bq:2DdgG")) != EOF)
+  while ((c = egetopt(argc, argv, "GPRTbdgq:2D")) != EOF)
     switch (c) {
+    case 'G':			/* GIF output format. */
+      requested_fmt = FMT_GIF;
+      break;
+    case 'P':			/* PPM output format. */
+      requested_fmt = FMT_PPM;
+      break;
+    case 'R':			/* RLE output format. */
+      requested_fmt = FMT_RLE;
+      break;
+    case 'T':			/* Targa output format. */
+      requested_fmt = FMT_TARGA;
+      break;
     case 'b':			/* Enable cross-block smoothing. */
       cinfo.do_block_smoothing = TRUE;
+      break;
+    case 'd':			/* Debugging. */
+      e_methods.trace_level++;
+      break;
+    case 'g':			/* Force grayscale output. */
+      cinfo.out_color_space = CS_GRAYSCALE;
       break;
     case 'q':			/* Do color quantization. */
       { int val;
@@ -215,17 +244,8 @@ main (int argc, char **argv)
     case '2':			/* Use two-pass quantization. */
       cinfo.two_pass_quantize = TRUE;
       break;
-    case 'D':			/* Use dithering in color quantization. */
-      cinfo.use_dithering = TRUE;
-      break;
-    case 'd':			/* Debugging. */
-      e_methods.trace_level++;
-      break;
-    case 'g':			/* Force grayscale output. */
-      cinfo.out_color_space = CS_GRAYSCALE;
-      break;
-    case 'G':			/* GIF output format. */
-      requested_fmt = FMT_GIF;
+    case 'D':			/* Suppress dithering in color quantization. */
+      cinfo.use_dithering = FALSE;
       break;
     case '?':
     default:
@@ -233,9 +253,36 @@ main (int argc, char **argv)
       break;
     }
 
+  /* If -d appeared, print version identification */
+  if (e_methods.trace_level > 0)
+    fprintf(stderr, "Independent JPEG Group's DJPEG, version %s\n%s\n",
+	    JVERSION, JCOPYRIGHT);
+
   /* Select the input and output files */
 
 #ifdef TWO_FILE_COMMANDLINE
+
+#  ifdef MSDOS
+
+  if (optind < argc-2 || optind > argc-1) {
+    usage(argv[0]);
+  }
+  fix_msdos_filename(infname, argv[optind], JPEG_EXT);
+  if (optind == argc-2) {
+    fix_msdos_filename(outfname, argv[optind+1], DEFAULT_FMT_EXT);
+  } else {
+    fix_msdos_filename(outfname, argv[optind], DEFAULT_FMT_EXT);
+  }
+  if ((cinfo.input_file = fopen(infname, READ_BINARY)) == NULL) {
+    fprintf(stderr, "%s: can't open %s\n", argv[0], infname);
+    exit(2);
+  }
+  if ((cinfo.output_file = fopen(outfname, WRITE_BINARY)) == NULL) {
+    fprintf(stderr, "%s: can't open %s\n", argv[0], outfname);
+    exit(2);
+  }
+
+#  else
 
   if (optind != argc-2) {
     fprintf(stderr, "%s: must name one input and one output file\n", argv[0]);
@@ -250,7 +297,12 @@ main (int argc, char **argv)
     exit(2);
   }
 
+#  endif
+
 #else /* not TWO_FILE_COMMANDLINE -- use Unix style */
+
+  cinfo.input_file = stdin;	/* default input file */
+  cinfo.output_file = stdout;	/* always the output file */
 
   if (optind < argc-1) {
     fprintf(stderr, "%s: only one input file\n", argv[0]);
@@ -278,9 +330,9 @@ main (int argc, char **argv)
   jpeg_decompress(&cinfo);
 
   /* Release memory. */
-  (*cinfo.emethods->free_small) ((void *) cinfo.input_buffer);
+  j_d_free_defaults(&cinfo, TRUE);
 #ifdef MEM_STATS
-  if (e_methods.trace_level > 0)
+  if (e_methods.trace_level > 0) /* Optional memory-usage statistics */
     j_mem_stats();
 #endif
 
